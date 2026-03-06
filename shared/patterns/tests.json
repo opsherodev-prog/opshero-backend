@@ -1,0 +1,330 @@
+{
+  "schema_version": "2.0.0",
+  "category": "tests",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "test_assertion_failed",
+      "version": "1.0.0",
+      "name": "Test Assertion Failed",
+      "category": "tests",
+      "subcategory": "assertion",
+      "severity": "medium",
+      "tags": ["tests", "assertion", "pytest", "jest", "mocha", "unit-test"],
+      "detection": {
+        "regex": "AssertionError: (.+)|assert (.+) == (.+)|Expected (.+) to equal (.+)|FAILED .+ - AssertionError",
+        "keywords_required": ["AssertionError", "FAILED"],
+        "keywords_optional": ["assert", "expected", "received", "actual", "toBe", "assertEqual"],
+        "exclude_if": [],
+        "file_patterns": ["*.test.py", "*.spec.ts", "*.test.ts", "*.test.js", "test_*.py"],
+        "variables": {
+          "error_message": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "assertion failed"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Review the failing assertion",
+          "explanation": "The test assertion failed: `{error_message}`. Check the test output for expected vs actual values. The test expected one value but got another — determine if the code or the test expectation is wrong.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["error_message"]
+        },
+        {
+          "rank": 2,
+          "title": "Review recent code changes",
+          "explanation": "Check `git diff HEAD~1` to see recent changes that may have altered the expected behavior. The test was passing before — determine what changed and whether the change is intentional.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Update test expectations if behavior is correct",
+          "explanation": "If the new code behavior is intentionally correct (e.g. a feature change), update the test's expected values to match. Never change tests to pass without understanding why they failed.",
+          "confidence": 0.75,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "test_timeout",
+      "version": "1.0.0",
+      "name": "Test Timeout",
+      "category": "tests",
+      "subcategory": "performance",
+      "severity": "medium",
+      "tags": ["tests", "timeout", "async", "performance", "deadlock"],
+      "detection": {
+        "regex": "TimeoutError|Timeout - Async callback was not invoked|timed out after (\\d+)ms|jest.setTimeout|Test timeout of",
+        "keywords_required": ["timeout", "timed out"],
+        "keywords_optional": ["TimeoutError", "async", "setTimeout", "deadlock", "infinite"],
+        "exclude_if": ["npm registry timeout", "pip timeout"],
+        "file_patterns": ["*.test.ts", "*.test.js", "*.spec.ts", "test_*.py"],
+        "variables": {
+          "timeout_ms": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase test timeout",
+          "explanation": "The test exceeded the timeout limit of {timeout_ms}ms. For async integration tests, increase the timeout: `jest.setTimeout(30000)` (Jest) or `@pytest.mark.timeout(30)` (pytest). Don't increase for unit tests — slow unit tests indicate a problem.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["timeout_ms"]
+        },
+        {
+          "rank": 2,
+          "title": "Mock external dependencies",
+          "explanation": "Tests shouldn't make real network calls or DB operations — these are slow and flaky. Mock HTTP calls with `msw` (Jest) or `responses` (pytest), mock DB with an in-memory store.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check for infinite loops or deadlocks",
+          "explanation": "The timeout may be caused by an infinite loop, unresolved Promise, or deadlock in the code under test. Add logs or use a debugger to trace where execution hangs.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["test_flaky"],
+        "often_causes": ["test_flaky"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "test_coverage_threshold",
+      "version": "1.0.0",
+      "name": "Test Coverage Threshold Not Met",
+      "category": "tests",
+      "subcategory": "coverage",
+      "severity": "medium",
+      "tags": ["tests", "coverage", "threshold", "jest", "pytest-cov", "nyc"],
+      "detection": {
+        "regex": "Jest: .* coverage threshold for (.+) \\((\\d+)%\\) not met|coverage for .* (\\d+)% does not meet global threshold|ERROR: Coverage failure",
+        "keywords_required": ["coverage", "threshold"],
+        "keywords_optional": ["failed", "not met", "global threshold", "branch", "line", "statement"],
+        "exclude_if": [],
+        "file_patterns": ["jest.config.ts", "jest.config.js", ".nycrc", "pyproject.toml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Add tests for uncovered code",
+          "explanation": "Run `npm test -- --coverage` (Jest) or `pytest --cov --cov-report=html` to see which files/lines are uncovered. Write targeted tests for the uncovered code paths — branches, edge cases, error handling.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Exclude non-critical files from coverage",
+          "explanation": "Exclude generated files, migrations, or config files from coverage. In Jest: `coveragePathIgnorePatterns`. In pytest: add `omit = tests/*,migrations/*` to `.coveragerc`.",
+          "confidence": 0.78,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Temporarily lower threshold",
+          "explanation": "If adding coverage is a gradual process, temporarily lower the threshold in `jest.config.ts` or `pyproject.toml`. Set a roadmap to increase it incrementally. Document the tech debt.",
+          "confidence": 0.65,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "test_flaky",
+      "version": "1.0.0",
+      "name": "Flaky Test - Retries Exhausted",
+      "category": "tests",
+      "subcategory": "reliability",
+      "severity": "medium",
+      "tags": ["tests", "flaky", "non-deterministic", "retry", "timing"],
+      "detection": {
+        "regex": "retries exhausted|test failed on retry|Flaky|non-deterministic|has been retried (\\d+) times",
+        "keywords_required": ["retries exhausted", "flaky"],
+        "keywords_optional": ["retry", "non-deterministic", "intermittent", "timing", "race condition"],
+        "exclude_if": [],
+        "file_patterns": ["*.test.ts", "*.test.js", "*.spec.ts", "test_*.py"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Remove timing dependencies",
+          "explanation": "Flaky tests often rely on `setTimeout`, `sleep()`, or wall-clock time. Replace with deterministic waits: `waitFor()` in Testing Library, `expect.poll()` in Playwright, or mock `Date.now()` / `datetime.now()`.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Properly mock external dependencies",
+          "explanation": "Tests that make real network calls or depend on external services are inherently flaky. Use `msw` (mock service worker) for HTTP, `jest.spyOn()` for modules, or `unittest.mock` for Python.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Isolate test state properly",
+          "explanation": "Tests that share state (global variables, DB records, file system) can interfere. Use `beforeEach`/`afterEach` to reset state, use a fresh DB transaction per test, or use test isolation frameworks.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["test_timeout"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "test_environment_setup",
+      "version": "1.0.0",
+      "name": "Test Environment Setup Failed",
+      "category": "tests",
+      "subcategory": "configuration",
+      "severity": "high",
+      "tags": ["tests", "setup", "configuration", "jest", "pytest", "beforeAll"],
+      "detection": {
+        "regex": "Cannot find module '(.+)'|setup.*failed.*error|beforeAll.*failed|globalSetup.*failed",
+        "keywords_required": ["Cannot find module", "setup", "failed"],
+        "keywords_optional": ["beforeAll", "afterAll", "globalSetup", "fixture", "jest.config"],
+        "exclude_if": ["npm ERR! 404", "git"],
+        "file_patterns": ["jest.config.ts", "jest.config.js", "pytest.ini", "conftest.py", "vitest.config.ts"],
+        "variables": {
+          "missing_module": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-module"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install test runner and dependencies",
+          "command_template": "npm install --save-dev jest @types/jest ts-jest",
+          "explanation": "The test runner or a required module is missing. Run `npm install --save-dev jest` (or the appropriate test runner). For Python: `pip install pytest pytest-asyncio pytest-cov`.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["missing_module"]
+        },
+        {
+          "rank": 2,
+          "title": "Verify test configuration file",
+          "explanation": "Check `jest.config.ts`, `vitest.config.ts`, or `pytest.ini` for incorrect paths, transform rules, or moduleNameMapper entries that may prevent modules from being found.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Set NODE_ENV for test environment",
+          "command_template": "NODE_ENV=test npm test",
+          "explanation": "Some configurations (dotenv, conditional imports) require `NODE_ENV=test` to load test-specific settings. Set it in CI: `env: NODE_ENV: test` in the workflow step.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

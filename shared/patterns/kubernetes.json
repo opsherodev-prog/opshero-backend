@@ -1,0 +1,742 @@
+{
+  "schema_version": "2.0.0",
+  "category": "kubernetes",
+  "updated_at": "2026-02-25T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "k8s_crash_loop_backoff",
+      "version": "1.0.0",
+      "name": "Kubernetes CrashLoopBackOff",
+      "category": "kubernetes",
+      "subcategory": "runtime",
+      "severity": "critical",
+      "tags": ["kubernetes", "k8s", "pod", "crashloop", "restart", "runtime"],
+      "detection": {
+        "regex": "CrashLoopBackOff|Back-off restarting failed container",
+        "keywords_required": ["CrashLoopBackOff"],
+        "keywords_optional": ["Back-off restarting", "RESTARTS", "Error", "OOMKilled"],
+        "exclude_if": ["ImagePullBackOff", "ErrImagePull"],
+        "file_patterns": ["*.yaml", "*.yml", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check container logs for the crash cause",
+          "command_template": "kubectl logs <pod-name> -n <namespace> --previous\nkubectl describe pod <pod-name> -n <namespace>",
+          "explanation": "CrashLoopBackOff means the container keeps crashing on startup. The `--previous` flag shows logs from the last crashed instance. Look for the exit code and last error lines.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check for missing environment variables or secrets",
+          "command_template": "kubectl get secret <secret-name> -n <namespace> -o yaml\nkubectl describe pod <pod-name> -n <namespace> | grep -A5 Environment",
+          "explanation": "A common crash cause is a missing required environment variable or secret. Verify all `env` and `envFrom` references exist in the namespace.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Increase liveness probe initialDelaySeconds",
+          "explanation": "If the app is slow to start, the liveness probe may kill it before it's ready. Increase `initialDelaySeconds` in the pod spec to give the app more startup time.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["k8s_oomkilled", "k8s_missing_secret"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_oomkilled",
+      "version": "1.0.0",
+      "name": "Kubernetes OOMKilled — Container Out of Memory",
+      "category": "kubernetes",
+      "subcategory": "runtime",
+      "severity": "critical",
+      "tags": ["kubernetes", "k8s", "oom", "memory", "exit-137", "limits"],
+      "detection": {
+        "regex": "OOMKilled|Reason:\\s+OOMKilled|Exit Code:\\s+137.*OOM|memory cgroup out of memory",
+        "keywords_required": ["OOMKilled"],
+        "keywords_optional": ["Exit Code: 137", "memory cgroup", "killed", "limits.memory"],
+        "exclude_if": ["ImagePullBackOff"],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase memory limit in pod spec",
+          "command_template": "kubectl set resources deployment/<name> -n <namespace> --limits=memory=1Gi --requests=memory=512Mi",
+          "explanation": "The container exceeded its memory limit and was killed (exit code 137). Increase `resources.limits.memory` in the Deployment/StatefulSet spec. Start with 2x the current limit.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check current memory usage",
+          "command_template": "kubectl top pod -n <namespace> --sort-by=memory\nkubectl top nodes",
+          "explanation": "Check live memory usage to understand how much is actually needed before adjusting limits.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Tune application memory for Node.js / JVM",
+          "command_template": "# Node.js — add to Dockerfile or env:\nNODE_OPTIONS=--max-old-space-size=768\n# Java — add JVM flags:\nJAVA_OPTS=-Xmx768m -Xms256m",
+          "explanation": "If the memory limit cannot be raised, tune the runtime. Node.js can be constrained with NODE_OPTIONS; JVM apps with -Xmx flags. Set these to ~80% of the memory limit.",
+          "confidence": 0.8,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["k8s_crash_loop_backoff"]
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_image_pull_backoff_rate_limit",
+      "version": "1.0.0",
+      "name": "Kubernetes ImagePull Failed — Docker Hub Rate Limit",
+      "category": "kubernetes",
+      "subcategory": "registry",
+      "severity": "high",
+      "tags": ["kubernetes", "k8s", "docker-hub", "rate-limit", "imagepull", "registry"],
+      "detection": {
+        "regex": "429 Too Many Requests|toomanyrequests|You have reached your pull rate limit",
+        "keywords_required": ["Too Many Requests", "toomanyrequests"],
+        "keywords_optional": ["pull rate limit", "docker.io", "unauthenticated", "rate limit"],
+        "exclude_if": [],
+        "file_patterns": ["*.yaml", "*.yml", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Authenticate to Docker Hub in CI",
+          "command_template": "# GitHub Actions — add to workflow:\n- name: Login to Docker Hub\n  uses: docker/login-action@v3\n  with:\n    username: ${{ secrets.DOCKERHUB_USERNAME }}\n    password: ${{ secrets.DOCKERHUB_TOKEN }}",
+          "explanation": "Anonymous Docker Hub pulls are limited to 100/6h per IP. Authenticated pulls get 200/6h (free) or unlimited (Pro/Team). Add Docker Hub login before builds.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use an imagePullSecret in Kubernetes",
+          "command_template": "kubectl create secret docker-registry dockerhub-creds \\\n  --docker-username=<user> \\\n  --docker-password=<token> \\\n  --docker-server=https://index.docker.io/v1/ \\\n  -n <namespace>",
+          "explanation": "Create a Docker Hub imagePullSecret and reference it in your pod spec under `spec.imagePullSecrets`. This authenticates Kubernetes node pulls.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Mirror images to a private registry",
+          "explanation": "Mirror frequently-used public images (node, python, alpine) to your own ECR/GCR/GHCR registry. Reference your mirror instead of docker.io to eliminate rate limits entirely.",
+          "confidence": 0.78,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["k8s_image_pull_backoff"]
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_resource_quota_exceeded",
+      "version": "1.0.0",
+      "name": "Kubernetes Resource Quota Exceeded",
+      "category": "kubernetes",
+      "subcategory": "resources",
+      "severity": "high",
+      "tags": ["kubernetes", "k8s", "quota", "cpu", "memory", "namespace", "limits"],
+      "detection": {
+        "regex": "exceeded quota|is forbidden.*exceeded quota|Error from server.*Forbidden.*quota",
+        "keywords_required": ["exceeded quota"],
+        "keywords_optional": ["Forbidden", "limits.cpu", "limits.memory", "requests.memory", "namespace"],
+        "exclude_if": [],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check current quota usage",
+          "command_template": "kubectl describe resourcequota -n <namespace>\nkubectl get resourcequota -n <namespace> -o yaml",
+          "explanation": "Check the current resource quota limits and usage for the namespace. Identify which resource (CPU, memory, pods, PVCs) is exhausted.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Request quota increase from platform team",
+          "explanation": "If the quota is legitimately too low for the workload, request an increase from the platform/SRE team. Provide the current and required CPU/memory numbers.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Reduce resource requests in Deployment",
+          "explanation": "If the quota is correct, reduce `resources.requests` in the Deployment spec. Requests must be accurate (not over-provisioned). Right-size using `kubectl top pod` data.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_rbac_forbidden",
+      "version": "1.0.0",
+      "name": "Kubernetes RBAC — Permission Denied",
+      "category": "kubernetes",
+      "subcategory": "auth",
+      "severity": "high",
+      "tags": ["kubernetes", "k8s", "rbac", "serviceaccount", "forbidden", "clusterrole"],
+      "detection": {
+        "regex": "is not authorized to|Forbidden.*cannot.*resource|User.*cannot (get|list|create|delete|patch|update|watch)",
+        "keywords_required": ["is not authorized", "cannot"],
+        "keywords_optional": ["Forbidden", "serviceaccount", "ClusterRole", "Role", "RBAC"],
+        "exclude_if": ["npm", "pip", "docker"],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check what permissions the service account has",
+          "command_template": "kubectl auth can-i <verb> <resource> --as=system:serviceaccount:<namespace>:<sa-name> -n <namespace>",
+          "explanation": "Use `kubectl auth can-i` to check if the service account can perform the failing action. Run `kubectl describe clusterrolebinding` to see current role assignments.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Create or update the RBAC Role/ClusterRole",
+          "command_template": "# Example ClusterRole grant:\nkubectl create clusterrolebinding <name> \\\n  --clusterrole=<role> \\\n  --serviceaccount=<namespace>:<sa-name>",
+          "explanation": "Create a Role or ClusterRole with the necessary verbs/resources, then bind it to the service account using a RoleBinding or ClusterRoleBinding.",
+          "confidence": 0.85,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Verify the service account name",
+          "explanation": "Confirm the pod is using the correct service account. Check `spec.serviceAccountName` in the pod spec matches the account with the required permissions.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["k8s_crash_loop_backoff"]
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "helm_upgrade_immutable_field",
+      "version": "1.0.0",
+      "name": "Helm Upgrade Failed — Immutable Field Changed",
+      "category": "kubernetes",
+      "subcategory": "helm",
+      "severity": "critical",
+      "tags": ["helm", "kubernetes", "k8s", "deployment", "selector", "immutable"],
+      "detection": {
+        "regex": "UPGRADE FAILED: cannot patch .* with kind .*: .* is invalid|field is immutable|spec\\.selector.*Invalid value",
+        "keywords_required": ["UPGRADE FAILED"],
+        "keywords_optional": ["cannot patch", "field is immutable", "spec.selector", "Invalid value"],
+        "exclude_if": [],
+        "file_patterns": ["*.yaml", "*.yml", ".github/workflows/*.yml"],
+        "variables": {
+          "resource_name": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-resource"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Delete and reinstall the Helm release",
+          "command_template": "helm uninstall <release-name> -n <namespace>\nhelm install <release-name> ./chart -n <namespace> -f values.yaml",
+          "explanation": "The Deployment's `spec.selector` is immutable — it cannot be changed after creation. You must delete the release and reinstall. Data in PersistentVolumes is NOT deleted (check your chart's `persistentVolumeReclaimPolicy`).",
+          "confidence": 0.95,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Use helm upgrade --force (deletes pods temporarily)",
+          "command_template": "helm upgrade <release-name> ./chart -n <namespace> --force",
+          "explanation": "`--force` deletes the resource and recreates it. This causes a brief downtime but avoids manual uninstall. Use only when downtime is acceptable.",
+          "confidence": 0.82,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Revert the label selector change",
+          "explanation": "If the selector change was unintentional, revert the chart change that modified `spec.selector` or `matchLabels`. Selector changes require a delete+recreate regardless.",
+          "confidence": 0.78,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "helm_upgrade_timeout",
+      "version": "1.0.0",
+      "name": "Helm Upgrade Timed Out — Pods Not Ready",
+      "category": "kubernetes",
+      "subcategory": "helm",
+      "severity": "high",
+      "tags": ["helm", "kubernetes", "k8s", "timeout", "deployment", "readiness"],
+      "detection": {
+        "regex": "Error: timed out waiting for the condition|Helm.*timed out|timeout.*waiting.*helm|context deadline exceeded.*helm",
+        "keywords_required": ["timed out waiting for the condition"],
+        "keywords_optional": ["helm", "timeout", "deadline exceeded", "not ready"],
+        "exclude_if": ["terraform", "kubectl apply"],
+        "file_patterns": ["*.yaml", "*.yml", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check pod events and logs after timeout",
+          "command_template": "kubectl get pods -n <namespace> -l app=<release-name>\nkubectl describe pod <pod-name> -n <namespace>\nkubectl logs <pod-name> -n <namespace>",
+          "explanation": "The Helm upgrade timed out because pods never became Ready. Inspect pod events and logs to find the root cause (image pull failure, OOMKilled, readiness probe failing).",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Increase helm upgrade timeout",
+          "command_template": "helm upgrade <release-name> ./chart -n <namespace> --timeout 10m",
+          "explanation": "Default Helm timeout is 5 minutes. If the app legitimately takes longer to start (e.g. database migrations), increase with `--timeout 10m`.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Roll back to the previous release",
+          "command_template": "helm rollback <release-name> -n <namespace>\n# Or to a specific revision:\nhelm rollback <release-name> <revision-number> -n <namespace>",
+          "explanation": "Roll back to the last working release to restore service while investigating the root cause.",
+          "confidence": 0.88,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["k8s_crash_loop_backoff", "k8s_oomkilled"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "helm_release_already_exists",
+      "version": "1.0.0",
+      "name": "Helm Release Already Exists",
+      "category": "kubernetes",
+      "subcategory": "helm",
+      "severity": "medium",
+      "tags": ["helm", "kubernetes", "k8s", "release", "install", "idempotent"],
+      "detection": {
+        "regex": "Error: INSTALLATION FAILED: cannot re-use a name that is still in use|release.*already exists",
+        "keywords_required": ["cannot re-use a name", "already exists"],
+        "keywords_optional": ["INSTALLATION FAILED", "helm install", "release"],
+        "exclude_if": [],
+        "file_patterns": ["*.yml", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Use helm upgrade --install (idempotent)",
+          "command_template": "helm upgrade --install <release-name> ./chart -n <namespace> -f values.yaml",
+          "explanation": "`helm upgrade --install` installs if not present, upgrades if it exists. Always use this in CI pipelines instead of `helm install` to make deployments idempotent.",
+          "confidence": 0.97,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Uninstall the stuck release first",
+          "command_template": "helm list -n <namespace>\nhelm uninstall <release-name> -n <namespace>",
+          "explanation": "If the release is in a failed state and cannot be upgraded, uninstall it first then reinstall.",
+          "confidence": 0.85,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "argocd_sync_timeout",
+      "version": "1.0.0",
+      "name": "ArgoCD Sync Health Check Timeout",
+      "category": "kubernetes",
+      "subcategory": "gitops",
+      "severity": "critical",
+      "tags": ["argocd", "gitops", "kubernetes", "sync", "health", "timeout"],
+      "detection": {
+        "regex": "Health check failed after|timed out waiting for.*condition|Health Status.*Degraded.*timeout",
+        "keywords_required": ["Health check failed after"],
+        "keywords_optional": ["Degraded", "timed out", "not ready", "timeout waiting"],
+        "exclude_if": ["helm", "terraform"],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check ArgoCD app status and pod events",
+          "command_template": "argocd app get <app-name>\nargocd app logs <app-name>\nkubectl get events -n <namespace> --sort-by='.lastTimestamp' | tail -30",
+          "explanation": "ArgoCD health check timed out — the Deployment never became healthy. Check pod events and application logs to find the root cause.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check ArgoCD sync status in UI",
+          "command_template": "argocd app sync <app-name>\nargocd app wait <app-name> --health",
+          "explanation": "Open the ArgoCD UI to see which resources failed to sync. Use `argocd app sync --force` if resources are stuck in a pending state.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Roll back ArgoCD app to previous revision",
+          "command_template": "argocd app history <app-name>\nargocd app rollback <app-name> <revision-id>",
+          "explanation": "Roll back the ArgoCD application to the last healthy revision to restore service.",
+          "confidence": 0.88,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["k8s_crash_loop_backoff", "k8s_oomkilled"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_pending_insufficient_resources",
+      "version": "1.0.0",
+      "name": "Kubernetes Pod Pending — Insufficient Node Resources",
+      "category": "kubernetes",
+      "subcategory": "scheduling",
+      "severity": "high",
+      "tags": ["kubernetes", "k8s", "pending", "scheduling", "cpu", "memory", "node"],
+      "detection": {
+        "regex": "Insufficient (cpu|memory|pods)|0/(\\d+) nodes are available.*Insufficient|FailedScheduling.*Insufficient",
+        "keywords_required": ["Insufficient"],
+        "keywords_optional": ["nodes are available", "FailedScheduling", "Pending", "0/"],
+        "exclude_if": ["quota"],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check node capacity and pending reason",
+          "command_template": "kubectl describe pod <pod-name> -n <namespace> | grep -A20 Events\nkubectl describe nodes | grep -A10 'Allocated resources'",
+          "explanation": "The pod cannot be scheduled because no node has enough CPU/memory. Check the Events section to see which nodes were tried and why they were rejected.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Scale up the cluster node pool",
+          "explanation": "Add more nodes to the cluster or enable cluster autoscaler. For managed Kubernetes (EKS, GKE, AKS), increase the node group min/max size.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Reduce pod resource requests",
+          "explanation": "If requests are over-provisioned, reduce `resources.requests.cpu` and `resources.requests.memory` to match actual usage (check `kubectl top pod`).",
+          "confidence": 0.78,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["k8s_resource_quota_exceeded"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_configmap_or_secret_missing",
+      "version": "1.0.0",
+      "name": "Kubernetes Pod Failed — Missing ConfigMap or Secret",
+      "category": "kubernetes",
+      "subcategory": "configuration",
+      "severity": "high",
+      "tags": ["kubernetes", "k8s", "configmap", "secret", "envfrom", "volumemount"],
+      "detection": {
+        "regex": "configmap .* not found|secret .* not found|unable to mount volumes|no secret named|couldn't find key .* in ConfigMap",
+        "keywords_required": ["not found"],
+        "keywords_optional": ["configmap", "secret", "mount", "volume", "key"],
+        "exclude_if": ["ImagePullBackOff", "docker"],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {
+          "resource_name": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Create the missing ConfigMap or Secret",
+          "command_template": "# For a ConfigMap:\nkubectl create configmap <name> --from-file=config.yaml -n <namespace>\n# For a Secret:\nkubectl create secret generic <name> --from-literal=key=value -n <namespace>",
+          "explanation": "The pod references a ConfigMap or Secret that doesn't exist in the namespace. Create it before deploying the pod.",
+          "confidence": 0.93,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use optional: true for non-critical references",
+          "explanation": "If the ConfigMap/Secret is optional, add `optional: true` to the `envFrom` or `volumeMount` reference in the pod spec so the pod starts even without it.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["k8s_crash_loop_backoff"]
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_readiness_probe_failing",
+      "version": "1.0.0",
+      "name": "Kubernetes Readiness Probe Failing",
+      "category": "kubernetes",
+      "subcategory": "probes",
+      "severity": "medium",
+      "tags": ["kubernetes", "k8s", "readiness", "probe", "healthcheck", "http"],
+      "detection": {
+        "regex": "Readiness probe failed|probe failed.*readiness|connection refused.*readiness|readiness probe.*HTTP probe failed",
+        "keywords_required": ["Readiness probe failed"],
+        "keywords_optional": ["HTTP probe", "connection refused", "timeout", "unhealthy"],
+        "exclude_if": [],
+        "file_patterns": ["*.yaml", "*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check if the application health endpoint is responding",
+          "command_template": "kubectl exec -it <pod-name> -n <namespace> -- curl -v http://localhost:<port>/healthz\nkubectl logs <pod-name> -n <namespace> | tail -50",
+          "explanation": "The readiness probe is calling an HTTP endpoint that is not responding. Exec into the pod and test the endpoint manually to see what the app returns.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Increase initialDelaySeconds",
+          "explanation": "If the application takes time to warm up (loading data, connecting to DB), increase `readinessProbe.initialDelaySeconds` to give it more time before probing starts.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Fix the health check endpoint",
+          "explanation": "Ensure the application's health endpoint returns HTTP 200 when healthy. It should not check external dependencies (database, cache) — only application-local state.",
+          "confidence": 0.78,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["k8s_crash_loop_backoff"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-25T00:00:00Z",
+        "updated_at": "2026-02-25T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opshero.dev/schemas/pattern.v2.json",
+  "title": "OpsHero Pattern Schema v2",
+  "description": "JSON Schema for OpsHero error pattern files. Used to validate community contributions in CI.",
+  "type": "object",
+  "required": ["schema_version", "category", "patterns"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Schema version (semver)"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["docker", "npm", "python", "git", "tests", "other"],
+      "description": "Top-level category for all patterns in this file"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "patterns": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/Pattern" }
+    }
+  },
+  "definitions": {
+    "Pattern": {
+      "type": "object",
+      "required": ["pattern_id", "version", "name", "category", "severity", "detection", "solutions", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "minLength": 5,
+          "maxLength": 80,
+          "description": "Unique snake_case identifier for the pattern"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Pattern version (semver)"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120,
+          "description": "Human-readable pattern name"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["docker", "npm", "python", "git", "tests", "other"]
+        },
+        "subcategory": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_\\-\\.]+$"
+          },
+          "maxItems": 15
+        },
+        "detection": {
+          "type": "object",
+          "required": ["keywords_required"],
+          "additionalProperties": false,
+          "properties": {
+            "regex": {
+              "type": "string",
+              "description": "Primary regex pattern for matching log lines. Must be a valid Python re module pattern.",
+              "minLength": 3
+            },
+            "keywords_required": {
+              "type": "array",
+              "description": "ALL of these keywords must be present in the log for this pattern to be considered. Used for fast pre-filter.",
+              "items": { "type": "string", "minLength": 2 },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "keywords_optional": {
+              "type": "array",
+              "description": "Any of these keywords boost the confidence score when found.",
+              "items": { "type": "string", "minLength": 2 },
+              "maxItems": 10
+            },
+            "exclude_if": {
+              "type": "array",
+              "description": "If ANY of these strings are present in the log, skip this pattern. Prevents false positives.",
+              "items": { "type": "string", "minLength": 2 },
+              "maxItems": 8
+            },
+            "file_patterns": {
+              "type": "array",
+              "description": "Glob patterns for files likely associated with this error (e.g. Dockerfile, package.json).",
+              "items": { "type": "string" },
+              "maxItems": 6
+            },
+            "variables": {
+              "type": "object",
+              "description": "Named variables to extract from regex capture groups, used for solution interpolation.",
+              "additionalProperties": {
+                "type": "object",
+                "required": ["from"],
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "enum": ["regex_group_1", "regex_group_2", "regex_group_3", "regex_group_4", "named_group"],
+                    "description": "Which regex capture group to extract from (1-indexed)"
+                  },
+                  "transform": {
+                    "type": "string",
+                    "enum": ["strip", "lowercase", "uppercase", "basename", "none"],
+                    "default": "strip"
+                  },
+                  "default": {
+                    "type": "string",
+                    "description": "Fallback value if the capture group is empty"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "solutions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "$ref": "#/definitions/Solution" }
+        },
+        "causal_chain": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "often_caused_by": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "pattern_ids that often precede this error in cascade failures"
+            },
+            "often_causes": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "pattern_ids that often follow this error"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "required": ["author", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "author": {
+              "type": "string",
+              "description": "GitHub username or 'opshero-team'"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["core", "community", "team", "ai"],
+              "description": "Pattern origin: core (opshero-maintained), community (PR), team (private), ai (LLM-generated, needs review)"
+            },
+            "community_pr": {
+              "type": "string",
+              "description": "GitHub PR number for community-contributed patterns"
+            },
+            "stats": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "matched_count": { "type": "integer", "minimum": 0 },
+                "helpful_count": { "type": "integer", "minimum": 0 },
+                "not_helpful_count": { "type": "integer", "minimum": 0 },
+                "success_rate": {
+                  "oneOf": [
+                    { "type": "number", "minimum": 0, "maximum": 1 },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Solution": {
+      "type": "object",
+      "required": ["rank", "title", "explanation", "confidence", "risk", "reversible", "affects_files", "requires_confirmation"],
+      "additionalProperties": false,
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Priority order (1 = most recommended)"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 100
+        },
+        "command_template": {
+          "type": "string",
+          "description": "Shell command template with {variable} placeholders from detection.variables"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 1000,
+          "description": "Detailed explanation of why this solution works and how to apply it"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Base confidence score (0.0-1.0). Will be adjusted by auto-learning stats."
+        },
+        "risk": {
+          "type": "string",
+          "enum": ["none", "low", "medium", "high"],
+          "description": "Risk level of applying this solution. 'high' requires_confirmation should be true."
+        },
+        "reversible": {
+          "type": "boolean",
+          "description": "Whether this solution can be easily undone"
+        },
+        "affects_files": {
+          "type": "boolean",
+          "description": "Whether this solution modifies files (requires file system write permission)"
+        },
+        "requires_confirmation": {
+          "type": "boolean",
+          "description": "Whether the UI should prompt for user confirmation before showing this solution as primary"
+        },
+        "variables_used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Which detection.variables are used in command_template or explanation"
+        }
+      }
+    }
+  }
+}

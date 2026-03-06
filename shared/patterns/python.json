@@ -1,0 +1,669 @@
+{
+  "schema_version": "2.0.0",
+  "category": "python",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "python_module_not_found",
+      "version": "1.0.0",
+      "name": "Python Module Not Found",
+      "category": "python",
+      "subcategory": "imports",
+      "severity": "high",
+      "tags": ["python", "pip", "import", "module", "requirements"],
+      "detection": {
+        "regex": "ModuleNotFoundError: No module named '(.+)'",
+        "keywords_required": ["ModuleNotFoundError", "No module named"],
+        "keywords_optional": ["pip", "requirements", "install"],
+        "exclude_if": ["npm", "docker", "Node.js"],
+        "file_patterns": ["requirements.txt", "pyproject.toml", "setup.py", "*.py"],
+        "variables": {
+          "module": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-module"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install the missing package",
+          "command_template": "pip install {module}",
+          "explanation": "The Python package `{module}` is not installed. Install it and add it to `requirements.txt` (or `pyproject.toml` under `[project].dependencies`).",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        },
+        {
+          "rank": 2,
+          "title": "Add to requirements.txt",
+          "command_template": "echo '{module}' >> requirements.txt && pip install -r requirements.txt",
+          "explanation": "The package may not be in `requirements.txt`. Add it to ensure reproducible installs across environments.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        },
+        {
+          "rank": 3,
+          "title": "Check the active virtual environment",
+          "explanation": "The package may be installed in a different Python environment. Run `which python` and `pip list | grep {module}` to verify you're using the correct venv.",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["python_import_error"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_syntax_error",
+      "version": "1.0.0",
+      "name": "Python Syntax Error",
+      "category": "python",
+      "subcategory": "syntax",
+      "severity": "high",
+      "tags": ["python", "syntax", "SyntaxError", "parse"],
+      "detection": {
+        "regex": "SyntaxError: (.+) \\((.+), line (\\d+)\\)|SyntaxError: (.+)",
+        "keywords_required": ["SyntaxError"],
+        "keywords_optional": ["invalid syntax", "line", "unexpected", "EOF"],
+        "exclude_if": ["JavaScript SyntaxError", "JSON SyntaxError", "npm ERR!"],
+        "file_patterns": ["*.py"],
+        "variables": {
+          "error_message": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "invalid syntax"
+          },
+          "file_path": {
+            "from": "regex_group_2",
+            "transform": "strip",
+            "default": "unknown"
+          },
+          "line_number": {
+            "from": "regex_group_3",
+            "transform": "strip",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Fix syntax error at specified location",
+          "explanation": "Python found a syntax error in `{file_path}` at line {line_number}: `{error_message}`. Open the file at that line and check for: missing `:` after if/for/def/class, unmatched parentheses/brackets, missing quotes.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["error_message", "file_path", "line_number"]
+        },
+        {
+          "rank": 2,
+          "title": "Check for unclosed brackets or quotes",
+          "explanation": "Python reports the error at the line where it notices the problem, not always where the issue is. Check the PREVIOUS lines for unclosed `(`, `[`, `{`, or `\"\"\"` strings.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check Python version compatibility",
+          "explanation": "Some Python 3.10+ features (match/case, parenthesized context managers) won't parse on older Python versions. Check with `python --version` and ensure you're using the right version.",
+          "confidence": 0.6,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_pip_timeout",
+      "version": "1.0.0",
+      "name": "pip Connection Timeout",
+      "category": "python",
+      "subcategory": "network",
+      "severity": "medium",
+      "tags": ["python", "pip", "timeout", "network", "pypi"],
+      "detection": {
+        "regex": "pip._vendor.urllib3.exceptions.ReadTimeoutError|ReadTimeoutError|ConnectTimeoutError",
+        "keywords_required": ["ReadTimeoutError"],
+        "keywords_optional": ["pip", "timeout", "pypi", "urllib3"],
+        "exclude_if": ["npm", "docker", "git"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase pip timeout",
+          "command_template": "pip install --default-timeout=120 -r requirements.txt",
+          "explanation": "pip's network connection timed out (default 15s). Increase the timeout with `--default-timeout=120` for slow networks or large packages.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use a PyPI mirror",
+          "command_template": "pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple/",
+          "explanation": "If PyPI is unreachable, use a regional mirror. Available mirrors: Tsinghua (CN), USTC (CN), Aliyun (CN), or configure with `pip config set global.index-url`.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Retry the pipeline",
+          "explanation": "Transient PyPI network issue. Simply retry the CI pipeline. Consider adding `--retries 5` to pip install.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_ssl_certificate",
+      "version": "1.0.0",
+      "name": "Python SSL Certificate Verification Failed",
+      "category": "python",
+      "subcategory": "network",
+      "severity": "medium",
+      "tags": ["python", "pip", "ssl", "certificate", "proxy"],
+      "detection": {
+        "regex": "SSL: CERTIFICATE_VERIFY_FAILED|ssl.SSLCertVerificationError|CERTIFICATE_VERIFY_FAILED",
+        "keywords_required": ["CERTIFICATE_VERIFY_FAILED"],
+        "keywords_optional": ["SSL", "ssl", "certificate", "verify", "certifi"],
+        "exclude_if": ["npm", "docker", "git"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Update certifi package",
+          "command_template": "pip install --upgrade certifi",
+          "explanation": "The `certifi` package contains the CA bundle used by Python's SSL. Upgrading it gets the latest trusted certificates and often resolves verification failures.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use trusted-host for corporate proxy (dev only)",
+          "command_template": "pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt",
+          "explanation": "Behind a corporate SSL-intercepting proxy, specify trusted hosts. WARNING: Only for development/internal CI with a trusted network. Never in production public environments.",
+          "confidence": 0.8,
+          "risk": "high",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Configure corporate CA certificate",
+          "command_template": "pip config set global.cert /path/to/corporate-ca.pem",
+          "explanation": "The permanent secure fix for corporate proxy: export your company's CA certificate and configure pip to trust it with `pip config set global.cert /path/to/ca.pem`.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["python_pip_timeout"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_compiler_missing",
+      "version": "1.0.0",
+      "name": "Python Compiler / Build Tools Missing",
+      "category": "python",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["python", "gcc", "build-tools", "C-extension", "wheel", "windows"],
+      "detection": {
+        "regex": "error: command 'gcc' failed|Microsoft Visual C\\+\\+ .* required|error: Microsoft Visual C\\+\\+ 14\\.0 or greater is required",
+        "keywords_required": ["command 'gcc' failed", "Microsoft Visual C++"],
+        "keywords_optional": ["build-essential", "compilation", "C extension", "python3-dev"],
+        "exclude_if": ["npm", "docker", "node-gyp"],
+        "file_patterns": ["requirements.txt", "setup.py"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install build essentials (Linux/macOS)",
+          "command_template": "apt-get install -y build-essential python3-dev",
+          "explanation": "Compiling a C extension requires `gcc`, `g++`, `make`, and Python headers. On Debian/Ubuntu: `apt-get install -y build-essential python3-dev`. On macOS: `xcode-select --install`.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Install Visual C++ Build Tools (Windows)",
+          "explanation": "On Windows, Python C extensions need Microsoft C++ Build Tools. Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/ and select 'C++ build tools' workload.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Install prebuilt wheel instead",
+          "explanation": "Many packages offer prebuilt wheels (`.whl`) for common platforms that don't require compilation. Try `pip install <package> --prefer-binary` or search for the wheel at https://www.lfd.uci.edu/~gohlke/pythonlibs/",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["python_wheel_build_failed"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_requirements_format",
+      "version": "1.0.0",
+      "name": "Python Invalid Requirement Format",
+      "category": "python",
+      "subcategory": "configuration",
+      "severity": "high",
+      "tags": ["python", "pip", "requirements.txt", "syntax", "format"],
+      "detection": {
+        "regex": "Invalid requirement: '(.+)'|Parse error at|Expected version spec",
+        "keywords_required": ["Invalid requirement"],
+        "keywords_optional": ["Parse error", "Expected version spec", "requirements"],
+        "exclude_if": ["npm", "cargo", "Gemfile"],
+        "file_patterns": ["requirements.txt", "requirements*.txt"],
+        "variables": {
+          "bad_requirement": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Fix requirements.txt syntax",
+          "explanation": "The requirement `{bad_requirement}` has invalid syntax. Valid formats: `package`, `package==1.0.0`, `package>=1.0,<2.0`, `package~=1.4.2`. No spaces around operators.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["bad_requirement"]
+        },
+        {
+          "rank": 2,
+          "title": "Remove comments and blank lines issues",
+          "explanation": "Ensure comments start with `#`. Each requirement must be on its own line. Trailing spaces after package names can sometimes cause parse errors.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Validate requirements file without installing",
+          "command_template": "pip install -r requirements.txt --dry-run",
+          "explanation": "Use pip's dry-run to validate all requirements without actually installing packages.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_venv_not_found",
+      "version": "1.0.0",
+      "name": "Python venv Module Not Found / Not Created",
+      "category": "python",
+      "subcategory": "environment",
+      "severity": "medium",
+      "tags": ["python", "venv", "virtualenv", "environment", "ubuntu"],
+      "detection": {
+        "regex": "No module named 'venv'|The virtual environment was not created|ensurepip is not available",
+        "keywords_required": ["No module named 'venv'", "virtual environment was not created"],
+        "keywords_optional": ["ensurepip", "python3-venv", "virtualenv"],
+        "exclude_if": ["npm", "docker"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install python3-venv (Debian/Ubuntu)",
+          "command_template": "apt-get install -y python3-venv python3-full",
+          "explanation": "On Debian/Ubuntu, the `venv` module is a separate package. Install it with `apt-get install -y python3-venv` (or `python3-full` on Ubuntu 23.04+).",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use virtualenv as alternative",
+          "command_template": "pip install virtualenv && virtualenv venv",
+          "explanation": "If `venv` is unavailable, use `virtualenv` (installable via pip). It works identically: `virtualenv venv && source venv/bin/activate`.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use conda environment",
+          "command_template": "conda create -n myenv python=3.12 && conda activate myenv",
+          "explanation": "If conda is available, use it as an alternative environment manager: `conda create -n myenv python=3.12`.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["python_module_not_found"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_pip_upgrade",
+      "version": "1.0.0",
+      "name": "pip Version Outdated",
+      "category": "python",
+      "subcategory": "tools",
+      "severity": "medium",
+      "tags": ["python", "pip", "upgrade", "resolver"],
+      "detection": {
+        "regex": "pip's dependency resolver does not currently take into account|Consider upgrading pip|WARNING: pip is configured with locations that require TLS/SSL",
+        "keywords_required": ["Consider upgrading pip"],
+        "keywords_optional": ["dependency resolver", "pip upgrade", "outdated pip"],
+        "exclude_if": ["npm", "docker"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Upgrade pip to latest",
+          "command_template": "python -m pip install --upgrade pip",
+          "explanation": "Upgrade pip using `python -m pip install --upgrade pip`. This ensures the newest resolver algorithm and security fixes. Add this step early in your CI pipeline.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Pin pip version in CI",
+          "command_template": "python -m pip install pip==24.0",
+          "explanation": "To prevent resolver warnings in CI, pin pip to a known stable version that supports your packages.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["python_requirements_format"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_wheel_build_failed",
+      "version": "1.0.0",
+      "name": "Python Wheel Build Failed",
+      "category": "python",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["python", "wheel", "build", "C-extension", "pip"],
+      "detection": {
+        "regex": "error: subprocess-exited-with-error|Building wheel for .* failed|Failed to build",
+        "keywords_required": ["Building wheel", "failed"],
+        "keywords_optional": ["subprocess-exited-with-error", "Failed to build", "build backend"],
+        "exclude_if": ["npm", "node-gyp", "cargo"],
+        "file_patterns": ["requirements.txt", "setup.py", "pyproject.toml"],
+        "variables": {
+          "package": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-package"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install build dependencies",
+          "command_template": "pip install build wheel setuptools && pip install -r requirements.txt",
+          "explanation": "Ensure `build`, `wheel`, and `setuptools` are up-to-date. Missing these causes wheel build failures even for pure-Python packages.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Install system compiler",
+          "explanation": "C extension packages need a compiler. See `python_compiler_missing` pattern. Install `build-essential python3-dev` on Linux.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Install prebuilt wheel with --prefer-binary",
+          "command_template": "pip install --prefer-binary {package}",
+          "explanation": "Force pip to download a prebuilt binary wheel instead of compiling from source. Works when wheels are available for your platform.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["package"]
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["python_compiler_missing"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "python_import_error",
+      "version": "1.0.0",
+      "name": "Python Import Error",
+      "category": "python",
+      "subcategory": "imports",
+      "severity": "high",
+      "tags": ["python", "ImportError", "circular-import", "PYTHONPATH"],
+      "detection": {
+        "regex": "ImportError: cannot import name '(.+)' from '(.+)'|ImportError: (.+)",
+        "keywords_required": ["ImportError"],
+        "keywords_optional": ["cannot import", "from", "circular", "PYTHONPATH"],
+        "exclude_if": ["ModuleNotFoundError", "npm", "docker"],
+        "file_patterns": ["*.py"],
+        "variables": {
+          "name": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-name"
+          },
+          "module": {
+            "from": "regex_group_2",
+            "transform": "strip",
+            "default": "unknown-module"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check for circular imports",
+          "explanation": "If the error says `cannot import name '{name}' from '{module}'` but the name clearly exists, you likely have a circular import. Use tools like `import-linter` or restructure the code to break the cycle.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["name", "module"]
+        },
+        {
+          "rank": 2,
+          "title": "Check PYTHONPATH",
+          "command_template": "export PYTHONPATH=$PYTHONPATH:/path/to/your/project",
+          "explanation": "The module directory may not be in `PYTHONPATH`. Add the project root: `export PYTHONPATH=$PYTHONPATH:$(pwd)`. In packages, ensure `__init__.py` exists.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        },
+        {
+          "rank": 3,
+          "title": "Verify package is installed",
+          "command_template": "pip show {module}",
+          "explanation": "The package may not be installed at all. Run `pip show {module}` to verify. If missing, install it. See `python_module_not_found` pattern.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["python_module_not_found"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

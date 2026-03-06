@@ -23,9 +23,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Copy shared patterns
-COPY ../shared /shared
-
 # Create non-root user
 RUN useradd -m -u 1000 opshero && \
     chown -R opshero:opshero /app

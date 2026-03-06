@@ -1,0 +1,935 @@
+{
+  "schema_version": "2.0.0",
+  "category": "docker",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "docker_missing_package",
+      "version": "1.0.0",
+      "name": "Docker Missing APT Package",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "medium",
+      "tags": ["docker", "apt", "build", "linux"],
+      "detection": {
+        "regex": "E: Unable to locate package (.+)",
+        "keywords_required": ["Unable to locate package"],
+        "keywords_optional": ["apt-get", "dpkg", "apt"],
+        "exclude_if": ["npm ERR!", "pip", "cargo", "go get"],
+        "file_patterns": ["Dockerfile", "*.dockerfile"],
+        "variables": {
+          "package": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-package"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install the missing package",
+          "command_template": "RUN apt-get update && apt-get install -y {package}",
+          "explanation": "The Docker build failed because a required APT package is not installed. Add `apt-get update && apt-get install -y {package}` to your Dockerfile before the step that needs it.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["package"]
+        },
+        {
+          "rank": 2,
+          "title": "Use a richer base image",
+          "explanation": "Consider switching from a slim/alpine base image (e.g. python:3.12-slim) to a full image (e.g. python:3.12) that may already include the package.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check package name for the distro",
+          "explanation": "The package name may differ between Debian/Ubuntu/Alpine. Run `docker run --rm <base-image> apt-cache search <keyword>` to find the correct name.",
+          "confidence": 0.6,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": {
+          "matched_count": 0,
+          "helpful_count": 0,
+          "not_helpful_count": 0,
+          "success_rate": null
+        }
+      }
+    },
+    {
+      "pattern_id": "docker_copy_not_found",
+      "version": "1.0.0",
+      "name": "Docker COPY Source Not Found",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["docker", "copy", "build-context", "dockerignore"],
+      "detection": {
+        "regex": "COPY failed: file not found in build context or excluded by \\.dockerignore: stat (.+): file does not exist",
+        "keywords_required": ["COPY failed"],
+        "keywords_optional": ["file not found", ".dockerignore", "build context", "stat"],
+        "exclude_if": [],
+        "file_patterns": ["Dockerfile", "*.dockerfile"],
+        "variables": {
+          "missing_path": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-file"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check file path in COPY instruction",
+          "explanation": "The file `{missing_path}` does not exist relative to the build context. Verify the path is correct and the file exists before building.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["missing_path"]
+        },
+        {
+          "rank": 2,
+          "title": "Check .dockerignore",
+          "explanation": "The file may exist but is excluded by .dockerignore. Open .dockerignore and verify there is no rule matching `{missing_path}`. Add `!{missing_path}` as an exception if needed.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["missing_path"]
+        },
+        {
+          "rank": 3,
+          "title": "Verify build context directory",
+          "explanation": "Ensure you're running `docker build` from the correct directory. The build context is the path argument passed to docker build (e.g. `.` means current directory).",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_dockerignore_excluded"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_invalid_instruction",
+      "version": "1.0.0",
+      "name": "Docker Invalid Instruction",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["docker", "dockerfile", "syntax"],
+      "detection": {
+        "regex": "unknown instruction: (.+)",
+        "keywords_required": ["unknown instruction"],
+        "keywords_optional": ["Dockerfile", "dockerfile"],
+        "exclude_if": [],
+        "file_patterns": ["Dockerfile", "*.dockerfile"],
+        "variables": {
+          "instruction": {
+            "from": "regex_group_1",
+            "transform": "uppercase",
+            "default": "UNKNOWN"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Fix Dockerfile instruction typo",
+          "explanation": "The instruction `{instruction}` is not a valid Dockerfile keyword. Valid instructions include: FROM, RUN, COPY, ADD, ENV, ARG, EXPOSE, WORKDIR, USER, ENTRYPOINT, CMD, LABEL, VOLUME, HEALTHCHECK, STOPSIGNAL, ONBUILD, SHELL.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["instruction"]
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_invalid_base_image",
+      "version": "1.0.0",
+      "name": "Docker Invalid or Inaccessible Base Image",
+      "category": "docker",
+      "subcategory": "registry",
+      "severity": "critical",
+      "tags": ["docker", "registry", "authentication", "image", "pull"],
+      "detection": {
+        "regex": "manifest unknown|pull access denied|denied: requested access to the resource is denied|Error response from daemon: pull access denied",
+        "keywords_required": ["pull access denied", "manifest unknown"],
+        "keywords_optional": ["denied", "unauthorized", "registry", "Error response from daemon"],
+        "exclude_if": ["git", "npm", "pip"],
+        "file_patterns": ["Dockerfile", "*.dockerfile", "docker-compose.yml", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Verify image name and tag",
+          "explanation": "The base image name or tag may be incorrect or does not exist. Verify the image exists: `docker pull <image>:<tag>` locally. Check Docker Hub or your private registry.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Authenticate to the registry",
+          "command_template": "echo $TOKEN | docker login -u $USER --password-stdin ghcr.io",
+          "explanation": "If using a private image, authenticate first. Store credentials as CI secrets and add a login step before the build.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Pin to a specific tag",
+          "explanation": "Avoid using `:latest`. Pin to a specific immutable version like `python:3.12.3-slim-bookworm` to ensure reproducible builds.",
+          "confidence": 0.8,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_credential_helper_error"],
+        "often_causes": ["docker_network_error"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_port_conflict",
+      "version": "1.0.0",
+      "name": "Docker Port Already in Use",
+      "category": "docker",
+      "subcategory": "runtime",
+      "severity": "medium",
+      "tags": ["docker", "port", "network", "runtime"],
+      "detection": {
+        "regex": "port is already allocated|bind: address already in use|listen tcp.*: address already in use",
+        "keywords_required": ["already in use"],
+        "keywords_optional": ["port", "allocated", "bind", "listen tcp", "EADDRINUSE"],
+        "exclude_if": ["npm ERR!", "EADDRINUSE: address already in use :::"],
+        "file_patterns": ["docker-compose.yml", "docker-compose.yaml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Stop the conflicting container",
+          "command_template": "docker ps | grep <port> && docker stop <container_id>",
+          "explanation": "Find and stop the container already using the port: `docker ps` to list running containers, then `docker stop <id>`.",
+          "confidence": 0.9,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Change the port mapping",
+          "explanation": "In your `docker-compose.yml` or `docker run` command, change the host port (left side of `:`). Example: change `8080:80` to `8081:80`.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use a dynamic host port",
+          "command_template": "docker run -p 80",
+          "explanation": "Omit the host port to let Docker assign a random available port: `docker run -p 80` instead of `docker run -p 8080:80`.",
+          "confidence": 0.7,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_permission_denied",
+      "version": "1.0.0",
+      "name": "Docker Permission Denied in Container",
+      "category": "docker",
+      "subcategory": "security",
+      "severity": "high",
+      "tags": ["docker", "permissions", "security", "user", "chown"],
+      "detection": {
+        "regex": "Permission denied|EACCES|Operation not permitted",
+        "keywords_required": ["Permission denied"],
+        "keywords_optional": ["EACCES", "not permitted", "chown", "chmod"],
+        "exclude_if": ["npm ERR! EPERM", "npm ERR! EACCES", "pip", "git"],
+        "file_patterns": ["Dockerfile", "*.dockerfile"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Fix file ownership in Dockerfile",
+          "command_template": "RUN chown -R appuser:appuser /app",
+          "explanation": "The process inside the container doesn't have permission to access a file/directory. Add a `RUN chown` instruction in the Dockerfile to set correct ownership, then switch to a non-root user.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Create and use a non-root user",
+          "command_template": "RUN groupadd -r appuser && useradd -r -g appuser appuser\nUSER appuser",
+          "explanation": "Running as root causes permission mismatches on volume mounts. Create a dedicated user in Dockerfile with `useradd` and switch with `USER appuser`.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check volume mount host permissions",
+          "explanation": "If using Docker volume mounts, ensure the host directory has read/write permissions for UID matching the container user. Use `chmod 755 ./host-dir`.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_layer_cache_failure",
+      "version": "1.0.0",
+      "name": "Docker Layer Cache Export Failed",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "medium",
+      "tags": ["docker", "buildkit", "cache", "layer"],
+      "detection": {
+        "regex": "failed to export layer|failed to compute cache key|error building layer",
+        "keywords_required": ["failed to export", "cache key"],
+        "keywords_optional": ["building layer", "export layer", "buildkit"],
+        "exclude_if": [],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Clear Docker build cache",
+          "command_template": "docker builder prune -f",
+          "explanation": "The BuildKit cache is corrupted. Clear it entirely with `docker builder prune -f` and rebuild from scratch.",
+          "confidence": 0.88,
+          "risk": "medium",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Build without cache",
+          "command_template": "docker build --no-cache -t myapp .",
+          "explanation": "Skip the cache completely for a clean build: `docker build --no-cache`. This is slower but guarantees a fresh build.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Reorder Dockerfile for better cache hits",
+          "explanation": "Place rarely-changing instructions (FROM, RUN apt-get) before frequently-changing ones (COPY src/) so stable layers are cached and only volatile layers rebuild.",
+          "confidence": 0.7,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_no_space_left"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_multi_stage_error",
+      "version": "1.0.0",
+      "name": "Docker Multi-Stage Build Failed",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["docker", "multi-stage", "buildkit", "build"],
+      "detection": {
+        "regex": "failed to solve with frontend|failed to solve: process \\\"(.+)\\\" did not complete successfully",
+        "keywords_required": ["failed to solve"],
+        "keywords_optional": ["frontend", "multi-stage", "COPY --from", "stage"],
+        "exclude_if": [],
+        "file_patterns": ["Dockerfile", "*.dockerfile"],
+        "variables": {
+          "failed_process": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-process"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Verify stage names in COPY --from",
+          "explanation": "Ensure every `COPY --from=<stage>` references an existing stage name declared with `AS <stage>` in your FROM instruction. Stage names are case-insensitive.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Debug intermediate stage",
+          "command_template": "docker build --target=<stage_name> -t debug-stage .",
+          "explanation": "Build only up to the failing stage using `--target=<stage_name>` to isolate and debug the issue in that specific stage.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Temporarily simplify to single-stage",
+          "explanation": "Comment out intermediate stages and test with a single stage to isolate which stage is causing the failure.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_missing_package", "docker_permission_denied"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_network_error",
+      "version": "1.0.0",
+      "name": "Docker Network Unreachable During Build",
+      "category": "docker",
+      "subcategory": "network",
+      "severity": "medium",
+      "tags": ["docker", "network", "dns", "ci", "firewall"],
+      "detection": {
+        "regex": "network unreachable|Could not resolve host|Temporary failure in name resolution|ETIMEDOUT|ENOTFOUND",
+        "keywords_required": ["network unreachable", "Could not resolve host"],
+        "keywords_optional": ["ETIMEDOUT", "ENOTFOUND", "name resolution", "dns"],
+        "exclude_if": ["npm ERR! network", "pip timeout"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Configure DNS for CI",
+          "explanation": "CI runners may have restricted DNS. Add `--network=host` to the build command, or configure Docker daemon with a public DNS (`8.8.8.8`). Check your CI's network documentation.",
+          "confidence": 0.85,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Retry the build",
+          "explanation": "Transient network issue (flaky DNS, temporary upstream outage). Trigger a new pipeline run. Consider adding retry logic with `max_attempts: 2` in your CI config.",
+          "confidence": 0.8,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Enable BuildKit for better network handling",
+          "command_template": "DOCKER_BUILDKIT=1 docker build .",
+          "explanation": "BuildKit has improved network handling and parallel layer downloading. Set `DOCKER_BUILDKIT=1` before the build command.",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_invalid_base_image"],
+        "often_causes": ["docker_missing_package"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_no_space_left",
+      "version": "1.0.0",
+      "name": "Docker No Space Left on Device",
+      "category": "docker",
+      "subcategory": "disk",
+      "severity": "critical",
+      "tags": ["docker", "disk", "enospc", "storage", "ci"],
+      "detection": {
+        "regex": "no space left on device|ENOSPC|disk full",
+        "keywords_required": ["no space left", "ENOSPC"],
+        "keywords_optional": ["disk", "device", "storage"],
+        "exclude_if": ["npm ERR! ENOSPC"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Clean Docker system resources",
+          "command_template": "docker system prune -af --volumes",
+          "explanation": "Remove all unused containers, networks, images, and build cache. Warning: this removes ALL stopped containers and dangling images. In CI, add this as a cleanup step.",
+          "confidence": 0.9,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Use larger CI runner",
+          "explanation": "GitHub Actions free runners have 14GB disk. If this is insufficient, use a self-hosted runner with more storage, or upgrade to a larger hosted runner.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use smaller base images",
+          "explanation": "Switch to `alpine` or `-slim` variants to reduce image sizes. Example: `python:3.12-slim` (70MB) vs `python:3.12` (1.2GB). Use multi-stage builds to minimize final image size.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["docker_layer_cache_failure"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_exec_format_error",
+      "version": "1.0.0",
+      "name": "Docker Exec Format Error (Architecture Mismatch)",
+      "category": "docker",
+      "subcategory": "platform",
+      "severity": "high",
+      "tags": ["docker", "architecture", "arm64", "amd64", "platform", "m1", "apple-silicon"],
+      "detection": {
+        "regex": "exec format error|exec user process caused|invalid architecture",
+        "keywords_required": ["exec format error"],
+        "keywords_optional": ["invalid architecture", "exec user process", "amd64", "arm64", "linux/arm"],
+        "exclude_if": [],
+        "file_patterns": ["Dockerfile", "*.dockerfile", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Specify target platform explicitly",
+          "command_template": "docker build --platform linux/amd64 -t myapp .",
+          "explanation": "The image was built for a different CPU architecture (e.g. ARM64 on Apple Silicon vs AMD64 on CI). Explicitly set the target platform: `--platform=linux/amd64` for CI deployments.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Build multi-arch image with buildx",
+          "command_template": "docker buildx build --platform linux/amd64,linux/arm64 -t myapp:latest --push .",
+          "explanation": "Use Docker Buildx to build a multi-architecture manifest that works on both AMD64 (CI/servers) and ARM64 (Apple M1/M2).",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use a multi-arch base image",
+          "explanation": "Verify your base image supports the target platform. Most official images (alpine, ubuntu, python, node) are multi-arch. Check Docker Hub for supported architectures.",
+          "confidence": 0.8,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_credential_helper_error",
+      "version": "1.0.0",
+      "name": "Docker Credential Helper Error",
+      "category": "docker",
+      "subcategory": "registry",
+      "severity": "medium",
+      "tags": ["docker", "registry", "authentication", "credentials", "ghcr", "ecr"],
+      "detection": {
+        "regex": "error getting credentials|docker-credential.* returned error|could not find credentials",
+        "keywords_required": ["credentials"],
+        "keywords_optional": ["credential helper", "docker-credential", "authentication", "config.json"],
+        "exclude_if": ["npm", "pip", "git"],
+        "file_patterns": [".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Login to registry in CI pipeline",
+          "command_template": "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
+          "explanation": "Add a registry login step before the build/push. Use `--password-stdin` (never inline passwords). Store registry tokens as encrypted CI secrets.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Remove broken credsStore from config.json",
+          "explanation": "If running locally, the credential helper may be misconfigured. Open `~/.docker/config.json` and remove the `credsStore` key, or reconfigure with `docker-credential-<helper>`.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use service account credentials",
+          "explanation": "For GCR/ECR/ACR, use service account credentials with appropriate IAM permissions rather than personal access tokens.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["docker_invalid_base_image"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_dockerignore_excluded",
+      "version": "1.0.0",
+      "name": "File Excluded by .dockerignore",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "medium",
+      "tags": ["docker", "dockerignore", "build-context"],
+      "detection": {
+        "regex": "excluded by .dockerignore|when matching.*dockerignore",
+        "keywords_required": [".dockerignore", "excluded"],
+        "keywords_optional": ["build context", "file not found"],
+        "exclude_if": [],
+        "file_patterns": [".dockerignore"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Update .dockerignore to allow the file",
+          "explanation": "Remove the pattern from `.dockerignore` that excludes the required file, or add a negation exception. Example: if `*.env` excludes too much, add `!.env.example` to re-include it.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Add an exception rule",
+          "explanation": "In `.dockerignore`, patterns starting with `!` are exceptions. Add `!path/to/needed/file` after the exclusion pattern to re-include it.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Verify file exists in build context",
+          "explanation": "Ensure the file exists in the directory being used as the Docker build context (the path argument to `docker build`).",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["docker_copy_not_found"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_sigkill_oom",
+      "version": "1.0.0",
+      "name": "Docker Container Killed (OOM)",
+      "category": "docker",
+      "subcategory": "runtime",
+      "severity": "high",
+      "tags": ["docker", "oom", "memory", "killed", "exit-137", "k8s"],
+      "detection": {
+        "regex": "Container killed|OOMKilled|exit code 137",
+        "keywords_required": ["OOMKilled", "exit code 137"],
+        "keywords_optional": ["Killed", "Out of memory", "memory limit", "cgroup"],
+        "exclude_if": ["JavaScript heap out of memory", "npm", "MemoryError", "ENOMEM"],
+        "file_patterns": ["docker-compose.yml", "*.yaml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase container memory limit",
+          "explanation": "The container was killed by the OOM killer (exit code 137). Increase the memory limit in `docker-compose.yml`: `mem_limit: 2g`, or in Kubernetes: `resources.limits.memory: 2Gi`.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Reduce application memory footprint",
+          "explanation": "For Node.js processes, set `NODE_OPTIONS=--max-old-space-size=1024`. For Java, tune `-Xmx`. For Python, use generators instead of lists for large data.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Profile for memory leaks",
+          "explanation": "If the container memory grows over time before being killed, there's a memory leak. Profile the application with tools like `heapdump` (Node.js), `memory_profiler` (Python), or `pprof` (Go).",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "docker_dockerfile_not_found",
+      "version": "1.0.0",
+      "name": "Dockerfile Not Found",
+      "category": "docker",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["docker", "dockerfile", "path", "ci"],
+      "detection": {
+        "regex": "Cannot locate Dockerfile|dockerfile not found|unable to prepare context",
+        "keywords_required": ["Dockerfile", "not found"],
+        "keywords_optional": ["locate", "unable to prepare", "context", "path"],
+        "exclude_if": [],
+        "file_patterns": [".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Specify Dockerfile path with -f",
+          "command_template": "docker build -f path/to/Dockerfile -t myapp .",
+          "explanation": "Docker cannot find the Dockerfile. Use `-f <path>` to specify the Dockerfile location explicitly.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Run from the correct directory",
+          "explanation": "Ensure you're in the directory containing the Dockerfile when running `docker build`. Use `ls Dockerfile` to verify.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Fix working-directory in GitHub Actions",
+          "explanation": "In GitHub Actions, add `working-directory: ./path/to/service` to the build step, or reference the full path: `file: ./service/Dockerfile`.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

@@ -1,0 +1,503 @@
+{
+  "schema_version": "2.0.0",
+  "category": "git",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "git_authentication_failed",
+      "version": "1.0.0",
+      "name": "Git Authentication Failed",
+      "category": "git",
+      "subcategory": "auth",
+      "severity": "critical",
+      "tags": ["git", "authentication", "token", "credentials", "CI"],
+      "detection": {
+        "regex": "fatal: Authentication failed for '(.+)'|remote: Invalid username or password|could not read Username",
+        "keywords_required": ["Authentication failed", "could not read Username"],
+        "keywords_optional": ["fatal", "remote", "https", "username", "password", "token"],
+        "exclude_if": ["npm", "docker", "pip"],
+        "file_patterns": [".github/workflows/*.yml"],
+        "variables": {
+          "repo_url": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-repo"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Configure GitHub token in CI",
+          "command_template": "git config --global url.\"https://$GITHUB_TOKEN@github.com/\".insteadOf \"https://github.com/\"",
+          "explanation": "In CI, GitHub HTTPS authentication requires a token. Use `GITHUB_TOKEN` (automatically provided in GitHub Actions) or a Personal Access Token (PAT) stored as a secret. Add: `git config --global url.\"https://$TOKEN@github.com/\".insteadOf \"https://github.com/\"`.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["repo_url"]
+        },
+        {
+          "rank": 2,
+          "title": "Check token permissions",
+          "explanation": "The PAT or deploy key may lack required scopes. For GitHub: ensure the token has `repo` (private repos) or `public_repo` (public) scope. Check token expiration.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Switch to SSH authentication",
+          "explanation": "Configure an SSH deploy key for the repository (Settings → Deploy keys). Use `git clone git@github.com:org/repo.git` instead of HTTPS. SSH doesn't require token management.",
+          "confidence": 0.8,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["git_remote_rejected"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_branch_protection",
+      "version": "1.0.0",
+      "name": "Git Branch Protection Violation",
+      "category": "git",
+      "subcategory": "policy",
+      "severity": "high",
+      "tags": ["git", "branch-protection", "main", "policy", "PR"],
+      "detection": {
+        "regex": "protected branch hook declined|cannot push to protected branch|remote: error: GH006|remote: error: changes must be made through a pull request",
+        "keywords_required": ["protected branch"],
+        "keywords_optional": ["hook declined", "GH006", "pull request required", "changes must be made"],
+        "exclude_if": [],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Create a pull request instead",
+          "explanation": "You attempted to push directly to a protected branch (e.g. `main`, `master`, `production`). The organization requires all changes to go through a Pull Request with code review and CI checks passing.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check required status checks",
+          "explanation": "Even if you create a PR, it may require specific CI checks to pass before merge. Ensure all required status checks in the branch protection rules are satisfied.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_merge_conflict",
+      "version": "1.0.0",
+      "name": "Git Merge Conflict",
+      "category": "git",
+      "subcategory": "merge",
+      "severity": "high",
+      "tags": ["git", "merge", "conflict", "rebase"],
+      "detection": {
+        "regex": "CONFLICT \\(|Merge conflict in (.+)|Automatic merge failed|fix conflicts and then commit the result",
+        "keywords_required": ["CONFLICT", "Merge conflict"],
+        "keywords_optional": ["Automatic merge failed", "fix conflicts", "<<<<<<", "=======", ">>>>>>>"],
+        "exclude_if": ["npm", "docker", "pip"],
+        "file_patterns": [],
+        "variables": {
+          "conflicted_file": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-file"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Resolve conflict markers manually",
+          "explanation": "Open the conflicted files. Find sections marked with `<<<<<<<`, `=======`, `>>>>>>>` and decide which changes to keep (yours, theirs, or a combination). Then: `git add <file> && git commit`.",
+          "confidence": 0.92,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true,
+          "variables_used": ["conflicted_file"]
+        },
+        {
+          "rank": 2,
+          "title": "Abort merge and try rebase",
+          "command_template": "git merge --abort && git pull --rebase origin main",
+          "explanation": "Abort the merge with `git merge --abort`, then use `git pull --rebase` instead of merge. Rebase creates a linear history and conflicts are easier to resolve one commit at a time.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use a visual merge tool",
+          "command_template": "git mergetool",
+          "explanation": "Run `git mergetool` to launch a 3-way diff tool (VS Code, vimdiff, meld) to resolve conflicts visually. Configure your preferred tool: `git config --global merge.tool vscode`.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["git_remote_rejected"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_submodule_error",
+      "version": "1.0.0",
+      "name": "Git Submodule Error",
+      "category": "git",
+      "subcategory": "submodules",
+      "severity": "high",
+      "tags": ["git", "submodule", "recursive", "CI"],
+      "detection": {
+        "regex": "submodule.*failed|fatal: .*submodule|Unable to find current revision",
+        "keywords_required": ["submodule"],
+        "keywords_optional": ["failed", "Unable to find", "recursive", "init", ".gitmodules"],
+        "exclude_if": [],
+        "file_patterns": [".gitmodules", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Initialize and update all submodules",
+          "command_template": "git submodule update --init --recursive",
+          "explanation": "Submodules are not initialized or are out of date. Run `git submodule update --init --recursive` to initialize and fetch all nested submodules.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Enable submodules in GitHub Actions checkout",
+          "explanation": "In GitHub Actions, `actions/checkout` doesn't fetch submodules by default. Add `submodules: recursive` to the checkout step: `uses: actions/checkout@v4 with: submodules: recursive`.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Authenticate for private submodules",
+          "explanation": "Private submodule repos require authentication. Configure git credentials before checkout, or use SSH submodule URLs with a deploy key that has access to both the main repo and submodule repos.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["git_authentication_failed"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_lfs_error",
+      "version": "1.0.0",
+      "name": "Git LFS Error",
+      "category": "git",
+      "subcategory": "lfs",
+      "severity": "high",
+      "tags": ["git", "lfs", "large-files", "git-lfs", "binary"],
+      "detection": {
+        "regex": "batch request failed|LFS object not found|This repository is configured for Git LFS",
+        "keywords_required": ["LFS", "Git LFS"],
+        "keywords_optional": ["batch request", "not found", "lfs pull", "pointer"],
+        "exclude_if": [],
+        "file_patterns": [".lfsconfig", ".gitattributes"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install Git LFS",
+          "command_template": "git lfs install",
+          "explanation": "Git LFS is not installed or initialized. Install from https://git-lfs.com/ then run `git lfs install` to set up the hooks.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Pull LFS objects explicitly",
+          "command_template": "git lfs pull",
+          "explanation": "After cloning, LFS files may not be downloaded. Run `git lfs pull` to download all tracked LFS objects. In CI, use `GIT_LFS_SKIP_SMUDGE=0` to ensure LFS files are downloaded.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Enable LFS in GitHub Actions",
+          "explanation": "Add `lfs: true` to the checkout step: `uses: actions/checkout@v4 with: lfs: true`. This automatically runs `git lfs pull` after checkout.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_shallow_clone",
+      "version": "1.0.0",
+      "name": "Git Shallow Clone Update Not Allowed",
+      "category": "git",
+      "subcategory": "clone",
+      "severity": "medium",
+      "tags": ["git", "shallow", "fetch-depth", "CI", "rebase"],
+      "detection": {
+        "regex": "shallow update not allowed|fatal: shallow file has changed since we read it",
+        "keywords_required": ["shallow update not allowed"],
+        "keywords_optional": ["shallow", "fetch-depth", "unshallow"],
+        "exclude_if": [],
+        "file_patterns": [".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Convert to full clone",
+          "command_template": "git fetch --unshallow",
+          "explanation": "The repository was cloned with `--depth=1` (shallow), which prevents rebase and some merge operations. Convert to a full clone: `git fetch --unshallow`.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Increase fetch depth in CI",
+          "explanation": "In GitHub Actions, change `fetch-depth: 1` to `fetch-depth: 0` for full history. If you need history for versioning (git-describe, release notes), always use `fetch-depth: 0`.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Fetch missing tags",
+          "command_template": "git fetch --tags --unshallow",
+          "explanation": "Shallow clones also miss tags. If your build process needs git tags (e.g. for version numbering), use `git fetch --tags --unshallow`.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_ref_lock",
+      "version": "1.0.0",
+      "name": "Git Reference Lock File Error",
+      "category": "git",
+      "subcategory": "filesystem",
+      "severity": "medium",
+      "tags": ["git", "lock", "stale", "ref", "concurrent"],
+      "detection": {
+        "regex": "Unable to create '.*/refs/heads/.*\\.lock'|Could not create directory.*\\.git",
+        "keywords_required": [".lock", "Unable to create"],
+        "keywords_optional": ["refs/heads", "stale", "lock file", ".git"],
+        "exclude_if": ["npm", "pip"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Remove stale lock files",
+          "command_template": "find .git -name '*.lock' -delete",
+          "explanation": "A stale `.lock` file was left by a crashed or killed git process. Remove it: `find .git -name '*.lock' -delete`. This is safe if no other git process is currently running.",
+          "confidence": 0.92,
+          "risk": "medium",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Kill other concurrent git processes",
+          "explanation": "If another git process is running (CI parallel jobs, IDEs), wait for it to finish. Running two git write operations concurrently in the same repo causes lock conflicts.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Fix .git directory permissions",
+          "command_template": "chmod -R 755 .git",
+          "explanation": "If the `.git` directory is not writable, git cannot create lock files (and cannot write at all). Fix with `chmod -R 755 .git`.",
+          "confidence": 0.8,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "git_remote_rejected",
+      "version": "1.0.0",
+      "name": "Git Push Rejected by Remote",
+      "category": "git",
+      "subcategory": "push",
+      "severity": "high",
+      "tags": ["git", "push", "rejected", "non-fast-forward", "force"],
+      "detection": {
+        "regex": "! \\[remote rejected\\].*\\(.*\\)|remote: error: refusing to allow|rejected.*non-fast-forward",
+        "keywords_required": ["remote rejected", "rejected"],
+        "keywords_optional": ["refusing", "non-fast-forward", "force-with-lease", "ahead"],
+        "exclude_if": ["protected branch"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Pull and rebase before pushing",
+          "command_template": "git pull --rebase origin main && git push",
+          "explanation": "The remote has new commits that aren't in your local branch (non-fast-forward). Pull and rebase your changes on top: `git pull --rebase origin main`, resolve any conflicts, then push.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Force push with safety check",
+          "command_template": "git push --force-with-lease",
+          "explanation": "If you intentionally rewrote history (rebase, amend), use `--force-with-lease` instead of `--force`. It fails if someone else pushed in the meantime, preventing accidental overwrites.",
+          "confidence": 0.82,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Check branch protection rules",
+          "explanation": "The rejection may be due to branch protection (required reviews, status checks). See `git_branch_protection` pattern. Create a PR instead of pushing directly.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["git_merge_conflict", "git_authentication_failed", "git_branch_protection"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

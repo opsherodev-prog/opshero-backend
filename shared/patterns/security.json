@@ -1,0 +1,613 @@
+{
+  "schema_version": "2.0.0",
+  "category": "security",
+  "updated_at": "2026-02-25T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "secret_aws_key_exposed",
+      "version": "1.0.0",
+      "name": "AWS Access Key Exposed in Logs",
+      "category": "security",
+      "subcategory": "secrets",
+      "severity": "critical",
+      "tags": ["security", "secrets", "aws", "credentials", "leak", "iam"],
+      "detection": {
+        "regex": "AKIA[0-9A-Z]{16}|AWS_ACCESS_KEY_ID.*=.*AKIA|aws_access_key_id\\s*=\\s*AKIA",
+        "keywords_required": ["AKIA"],
+        "keywords_optional": ["AWS_ACCESS_KEY_ID", "aws_access_key_id", "AWS_SECRET_ACCESS_KEY"],
+        "exclude_if": ["EXAMPLE", "XXXX", "YOUR_KEY", "placeholder"],
+        "file_patterns": ["*.log", "*.txt", "*.yml", "*.yaml", "*.tf", "*.env"],
+        "variables": {
+          "key_id": {
+            "from": "regex",
+            "pattern": "(AKIA[0-9A-Z]{16})",
+            "transform": "trim",
+            "default": "<key-id>"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Immediately invalidate the exposed key",
+          "command_template": "# Deactivate via AWS CLI:\naws iam update-access-key \\\n  --access-key-id <key-id> \\\n  --status Inactive \\\n  --user-name <iam-user>\n\n# Or delete it entirely:\naws iam delete-access-key \\\n  --access-key-id <key-id> \\\n  --user-name <iam-user>",
+          "explanation": "An exposed AWS access key must be rotated immediately. Even if the key was only briefly visible in logs, assume it was captured by automated scanners. Deactivate first (reversible), then investigate, then delete.",
+          "confidence": 0.99,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Check CloudTrail for unauthorized use of the key",
+          "command_template": "# Look for API calls using the exposed key in the last 24h:\naws cloudtrail lookup-events \\\n  --lookup-attributes AttributeKey=AccessKeyId,AttributeValue=<key-id> \\\n  --start-time $(date -d '24 hours ago' +%s)\n\n# Check for unusual regions or services",
+          "explanation": "After deactivating the key, audit CloudTrail to determine if and how it was used. Check for IAM changes, S3 data access, EC2 launches, and cross-region activity.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Remove the key from source and add to .gitignore / pre-commit hooks",
+          "command_template": "# Remove from git history using git-filter-repo:\npip install git-filter-repo\ngit filter-repo --path .env --invert-paths\n\n# Add pre-commit secret scanner:\n# .pre-commit-config.yaml:\nrepos:\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.18.0\n    hooks:\n      - id: gitleaks",
+          "explanation": "After remediation, prevent recurrence by adding secret scanning to pre-commit hooks (gitleaks, detect-secrets) and enabling GitHub Advanced Security or GitGuardian for repository-level scanning.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "secret_github_pat_exposed",
+      "version": "1.0.0",
+      "name": "GitHub Personal Access Token Exposed",
+      "category": "security",
+      "subcategory": "secrets",
+      "severity": "critical",
+      "tags": ["security", "secrets", "github", "token", "pat", "leak"],
+      "detection": {
+        "regex": "ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82}|ghs_[A-Za-z0-9]{36}|GITHUB_TOKEN.*ghp_",
+        "keywords_required": ["ghp_"],
+        "keywords_optional": ["GITHUB_TOKEN", "GH_TOKEN", "github_pat_", "ghs_"],
+        "exclude_if": ["example", "placeholder", "XXXXXX"],
+        "file_patterns": ["*.log", "*.txt", "*.yml", "*.yaml", "*.env"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Immediately revoke the exposed GitHub token",
+          "command_template": "# Via GitHub UI:\n# Settings → Developer settings → Personal access tokens → Revoke\n\n# Via API:\ncurl -X DELETE \\\n  -H \"Authorization: token <your-admin-token>\" \\\n  https://api.github.com/applications/<client_id>/token \\\n  -d '{\"access_token\":\"<exposed-token>\"}'",
+          "explanation": "GitHub PATs grant broad repository and organization access. Revoke immediately via the GitHub UI or API. GitHub's Secret Scanning may auto-revoke fine-grained PATs for select patterns.",
+          "confidence": 0.99,
+          "risk": "low",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Audit GitHub audit log for token usage",
+          "command_template": "# GitHub Enterprise — query audit log via API:\ncurl -H \"Authorization: Bearer <admin-token>\" \\\n  \"https://api.github.com/enterprises/<enterprise>/audit-log?phrase=token_id:<token>&per_page=100\"",
+          "explanation": "Check the GitHub audit log for repository clones, pushes, workflow triggers, and organization changes performed with the exposed token.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Replace with GitHub Actions OIDC or fine-grained PAT stored as secret",
+          "command_template": "# In GitHub Actions — use built-in GITHUB_TOKEN (already scoped):\n- name: Checkout\n  uses: actions/checkout@v4\n  with:\n    token: ${{ secrets.GITHUB_TOKEN }}\n\n# For cross-repo access — use a fine-grained PAT stored as a secret:\n# Repository Settings → Secrets → Actions → New repository secret",
+          "explanation": "Never hardcode GitHub tokens. Use the built-in `GITHUB_TOKEN` for same-repo operations, or a fine-grained PAT scoped to minimum permissions stored in GitHub Secrets.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "secret_private_key_exposed",
+      "version": "1.0.0",
+      "name": "Private Key Exposed in Logs or Repository",
+      "category": "security",
+      "subcategory": "secrets",
+      "severity": "critical",
+      "tags": ["security", "secrets", "private-key", "rsa", "ecdsa", "ssh", "tls", "pem"],
+      "detection": {
+        "regex": "-----BEGIN (RSA |EC |OPENSSH |DSA |)?PRIVATE KEY-----|-----BEGIN CERTIFICATE-----|PuTTY-User-Key-File",
+        "keywords_required": ["PRIVATE KEY"],
+        "keywords_optional": ["BEGIN RSA", "BEGIN EC", "BEGIN OPENSSH", "PuTTY-User-Key"],
+        "exclude_if": ["EXAMPLE", "placeholder", "test_key", "fake"],
+        "file_patterns": ["*.log", "*.pem", "*.key", "*.p12", "*.pfx", "*.txt"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Immediately revoke and regenerate the private key",
+          "explanation": "Private keys (SSH, TLS, code signing) that appear in logs or source code must be considered compromised. Revoke the associated certificate or public key from all services (GitHub SSH keys, TLS certificate provider, cloud providers), then generate a new key pair.",
+          "confidence": 0.99,
+          "risk": "low",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Store keys in a secrets manager, not in code or environment output",
+          "command_template": "# AWS Secrets Manager:\naws secretsmanager create-secret \\\n  --name prod/ssh-deploy-key \\\n  --secret-string file://deploy_key\n\n# GitHub Actions — store as encrypted secret:\n# Repository Settings → Secrets → Actions → New secret\n# Then reference: ${{ secrets.DEPLOY_KEY }}\n\n# HashiCorp Vault:\nvault kv put secret/deploy-key private=\"$(cat deploy_key)\"",
+          "explanation": "Private keys should be stored in a secrets manager (AWS Secrets Manager, HashiCorp Vault, GitHub Actions secrets) with audit logging, rotation support, and least-privilege access controls.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Remove from git history with git-filter-repo",
+          "command_template": "pip install git-filter-repo\ngit filter-repo --path private_key.pem --invert-paths --force\ngit push --force-with-lease",
+          "explanation": "If the key was committed to git, removing it from HEAD is not enough — it remains in history. Use git-filter-repo to rewrite history, then force-push. Notify all collaborators to re-clone.",
+          "confidence": 0.9,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.github.com/en/authentication/troubleshooting-ssh",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "secret_generic_api_key",
+      "version": "1.0.0",
+      "name": "Generic API Key or Token Detected in Logs",
+      "category": "security",
+      "subcategory": "secrets",
+      "severity": "high",
+      "tags": ["security", "secrets", "api-key", "token", "leak", "credential"],
+      "detection": {
+        "regex": "(?i)(api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|bearer[_-]?token|service[_-]?account[_-]?key)\\s*[=:]\\s*['\"]?[A-Za-z0-9+/=_\\-]{20,}",
+        "keywords_required": ["api_key", "api-key", "access_token", "auth_token", "bearer"],
+        "keywords_optional": ["secret", "token", "key", "credential"],
+        "exclude_if": ["example", "placeholder", "YOUR_API_KEY", "XXXXXX", "${", "$("],
+        "file_patterns": ["*.log", "*.txt", "*.env", "*.yml", "*.yaml", "*.json", "*.sh"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Identify and rotate the exposed credential immediately",
+          "explanation": "Identify which service the key belongs to from context (Stripe, Twilio, SendGrid, OpenAI, etc.) and rotate it immediately via that service's dashboard. Check access logs for unauthorized usage.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Redact secrets from CI logs",
+          "command_template": "# GitHub Actions — mask a value so it appears as *** in logs:\n- name: Mask API key\n  run: echo \"::add-mask::${{ secrets.API_KEY }}\"\n\n# Never echo secrets directly:\n# BAD:  echo \"API_KEY=$API_KEY\"\n# GOOD: Use the secret only where needed, never print it",
+          "explanation": "CI secrets must be masked so they never appear in job output. In GitHub Actions, secrets referenced via `${{ secrets.* }}` are automatically masked. Direct bash `echo` of a variable bypasses masking.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Enable repository secret scanning",
+          "command_template": "# GitHub Advanced Security — enable in repository settings:\n# Settings → Code security and analysis → Secret scanning → Enable\n\n# Add .gitleaks.toml for custom patterns:\n[allowlist]\n  description = \"Allowlisted patterns\"\n  regexes = ['''^EXAMPLE_.*''']",
+          "explanation": "Enable GitHub Advanced Security Secret Scanning or integrate GitGuardian to automatically detect and alert on exposed secrets before they are merged. Pre-commit hooks with gitleaks provide a first line of defense.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "sast_sql_injection",
+      "version": "1.0.0",
+      "name": "SAST: SQL Injection Vulnerability Detected",
+      "category": "security",
+      "subcategory": "sast",
+      "severity": "critical",
+      "tags": ["security", "sast", "sql-injection", "sqli", "semgrep", "snyk", "sonarqube", "vulnerability"],
+      "detection": {
+        "regex": "sql.injection|SQLi|CWE-89|taint.sql|OWASP.*A03|Improper Neutralization of Special Elements used in an SQL Command|sql injection.*HIGH|finding.*sql.*injection",
+        "keywords_required": ["sql injection"],
+        "keywords_optional": ["CWE-89", "taint", "OWASP", "HIGH", "CRITICAL", "Semgrep", "Snyk", "SonarQube"],
+        "exclude_if": ["false positive", "wontfix", "acknowledged"],
+        "file_patterns": ["*.log", "*.sarif", "*.json"],
+        "variables": {
+          "cwe": { "from": "regex", "pattern": "(CWE-\\d+)", "transform": "trim", "default": "CWE-89" }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Use parameterized queries / prepared statements",
+          "command_template": "# BAD — direct string interpolation:\nquery = f\"SELECT * FROM users WHERE id = {user_id}\"\n\n# GOOD — parameterized query (Python/psycopg2):\ncursor.execute(\"SELECT * FROM users WHERE id = %s\", (user_id,))\n\n# GOOD — SQLAlchemy ORM:\nuser = session.query(User).filter(User.id == user_id).first()\n\n# GOOD — Node.js/pg:\nconst result = await client.query('SELECT * FROM users WHERE id = $1', [userId])",
+          "explanation": "SQL injection occurs when user input is concatenated directly into SQL queries. Always use parameterized queries or an ORM — never string formatting or concatenation with user-supplied data.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Add input validation and allowlisting",
+          "command_template": "# For column names or table names that must be dynamic:\n# Use an allowlist, never raw user input:\nALLOWED_COLUMNS = {'name', 'email', 'created_at'}\nif sort_col not in ALLOWED_COLUMNS:\n    raise ValueError(f'Invalid column: {sort_col}')\n# Safe to interpolate allowed values only",
+          "explanation": "Parameterized queries handle values. For dynamic identifiers (table/column names), use an explicit allowlist — these cannot be parameterized in most database drivers.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://owasp.org/www-community/attacks/SQL_Injection",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "sast_command_injection",
+      "version": "1.0.0",
+      "name": "SAST: Command Injection Vulnerability Detected",
+      "category": "security",
+      "subcategory": "sast",
+      "severity": "critical",
+      "tags": ["security", "sast", "command-injection", "rce", "CWE-78", "semgrep", "snyk"],
+      "detection": {
+        "regex": "command.injection|CWE-78|OS Command Injection|subprocess.*shell=True.*user|os\\.system.*user|exec.*user_input|Improper Neutralization of Special Elements used in an OS Command",
+        "keywords_required": ["command injection"],
+        "keywords_optional": ["CWE-78", "shell=True", "os.system", "exec", "RCE", "HIGH", "CRITICAL"],
+        "exclude_if": ["false positive", "wontfix", "acknowledged"],
+        "file_patterns": ["*.log", "*.sarif", "*.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Use subprocess with argument list, never shell=True with user input",
+          "command_template": "# BAD — shell=True with user input = RCE:\nsubprocess.run(f\"git clone {user_url}\", shell=True)\nos.system(f\"ping {hostname}\")\n\n# GOOD — pass arguments as a list:\nsubprocess.run([\"git\", \"clone\", user_url], shell=False, check=True)\n\n# GOOD — validate input before use:\nimport re\nif not re.match(r'^[a-zA-Z0-9./_-]+$', user_url):\n    raise ValueError('Invalid URL characters')\nsubprocess.run([\"git\", \"clone\", user_url])",
+          "explanation": "Command injection occurs when user-controlled data reaches a shell interpreter. Always pass arguments as a list to subprocess (never shell=True with user input), and validate input against a strict allowlist.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use language-native APIs instead of shell commands",
+          "command_template": "# Instead of: os.system(f\"rm -rf {path}\")\nimport shutil\nshutil.rmtree(path)\n\n# Instead of: os.system(f\"cp {src} {dst}\")\nimport shutil\nshutil.copy2(src, dst)\n\n# Instead of: subprocess.run(f\"curl {url}\", shell=True)\nimport httpx\nresponse = httpx.get(url)",
+          "explanation": "For common file, network, and process operations, prefer language-native libraries over shell commands. They are not susceptible to shell metacharacter injection.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://owasp.org/www-community/attacks/Command_Injection",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "dependency_cve_critical",
+      "version": "1.0.0",
+      "name": "Critical CVE in Application Dependency",
+      "category": "security",
+      "subcategory": "sca",
+      "severity": "critical",
+      "tags": ["security", "cve", "vulnerability", "dependency", "sca", "npm-audit", "pip-audit", "snyk", "trivy"],
+      "detection": {
+        "regex": "CVE-\\d{4}-\\d{4,}.*CRITICAL|critical.*CVE-\\d{4}-\\d{4,}|severity: CRITICAL|Severity: critical|\\bCRITICAL\\b.*\\bCVE\\b|npm audit.*critical|\\d+ critical vulnerabilit",
+        "keywords_required": ["CVE", "CRITICAL"],
+        "keywords_optional": ["vulnerability", "npm audit", "pip-audit", "Snyk", "severity"],
+        "exclude_if": ["LOW", "MEDIUM", "HIGH", "no known vulnerabilities"],
+        "file_patterns": ["*.log", "*.json", "*.sarif", "*.txt"],
+        "variables": {
+          "cve_id": {
+            "from": "regex",
+            "pattern": "(CVE-\\d{4}-\\d{4,})",
+            "transform": "trim",
+            "default": "<CVE-ID>"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Upgrade the affected package to a patched version",
+          "command_template": "# npm:\nnpm audit\nnpm audit fix\nnpm install <package>@<patched-version>\n\n# Python:\npip-audit\npip install --upgrade <package>\n\n# Go:\ngovulncheck ./...\ngo get <module>@<patched-version>\n\n# Ruby:\nbundle audit\nbundle update <gem>",
+          "explanation": "The fastest remediation is upgrading the vulnerable package. Check the CVE advisory for the minimum patched version, then update your lockfile and re-run the audit to confirm the vulnerability is resolved.",
+          "confidence": 0.9,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check if the vulnerable code path is actually reachable",
+          "explanation": "Some CVEs affect features your application doesn't use (e.g., a deserialization vulnerability in a module you only use for string parsing). Tools like Snyk Reachability or GitHub Dependabot can assess reachability. Document as accepted risk if truly unreachable.",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Add Dependabot or Renovate for automated dependency updates",
+          "command_template": "# .github/dependabot.yml:\nversion: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n    open-pull-requests-limit: 10",
+          "explanation": "Automated dependency update tools (Dependabot, Renovate) create PRs for new versions including security patches. Enable them to stay ahead of vulnerabilities proactively.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://nvd.nist.gov/",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "container_cve_critical",
+      "version": "1.0.0",
+      "name": "Critical CVE in Container Image",
+      "category": "security",
+      "subcategory": "container-security",
+      "severity": "critical",
+      "tags": ["security", "cve", "container", "docker", "trivy", "grype", "aqua", "image-scan"],
+      "detection": {
+        "regex": "CRITICAL.*CVE-\\d{4}-\\d{4,}|Trivy.*CRITICAL|Grype.*CRITICAL|\\bCRITICAL\\b.*\\bOS\\b.*\\bpackage\\b|Total: \\d+ \\(CRITICAL: [1-9]",
+        "keywords_required": ["CRITICAL"],
+        "keywords_optional": ["Trivy", "Grype", "CVE", "OS package", "library", "container scan"],
+        "exclude_if": ["CRITICAL: 0", "Total: 0"],
+        "file_patterns": ["*.log", "*.json", "*.sarif"],
+        "variables": {
+          "critical_count": {
+            "from": "regex",
+            "pattern": "CRITICAL: (\\d+)",
+            "transform": "trim",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Use a minimal base image (distroless or Alpine)",
+          "command_template": "# Switch from ubuntu:latest to a minimal base:\n# Dockerfile:\nFROM gcr.io/distroless/python3-debian12\n# or:\nFROM python:3.12-alpine\n# or for Go/static binaries:\nFROM gcr.io/distroless/static-debian12\n\n# Scan the new image:\ntrivy image python:3.12-alpine",
+          "explanation": "Most container CVEs are in OS packages of the base image. Distroless images contain only your app and its runtime — no shell, no package manager, massively reduced attack surface. Alpine images are ~5MB and have fewer packages than Debian/Ubuntu.",
+          "confidence": 0.9,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Update base image tag and rebuild",
+          "command_template": "# Use a specific digest for reproducibility:\ndocker pull python:3.12-slim\ndocker build --no-cache -t myapp:latest .\n\n# Scan result:\ntrivy image myapp:latest --severity CRITICAL,HIGH",
+          "explanation": "Base image tags like `:3.12-slim` point to the latest patch. Rebuild with `--no-cache` to pull the latest base image, which often includes OS-level security patches.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Add container scanning to the CI pipeline",
+          "command_template": "# GitHub Actions with Trivy:\n- name: Scan image\n  uses: aquasecurity/trivy-action@master\n  with:\n    image-ref: myapp:${{ github.sha }}\n    format: sarif\n    output: trivy-results.sarif\n    severity: CRITICAL,HIGH\n    exit-code: 1  # fail CI on CRITICAL findings",
+          "explanation": "Integrate Trivy, Grype, or Snyk Container into your CI pipeline to block image pushes with critical vulnerabilities. Upload SARIF results to GitHub Security tab for tracking.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["k8s_crash_loop_backoff"]
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://aquasecurity.github.io/trivy/",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "iac_open_security_group",
+      "version": "1.0.0",
+      "name": "IaC Security: Open Security Group (0.0.0.0/0)",
+      "category": "security",
+      "subcategory": "iac-security",
+      "severity": "high",
+      "tags": ["security", "iac", "terraform", "checkov", "tfsec", "security-group", "firewall", "network"],
+      "detection": {
+        "regex": "0\\.0\\.0\\.0/0.*ingress|cidr_blocks.*0\\.0\\.0\\.0/0|Check: CKV_AWS_24|Check: CKV_AWS_25|aws-ec2-no-public-ingress-sgr|FAILED.*security.group.*0\\.0\\.0\\.0",
+        "keywords_required": ["0.0.0.0/0"],
+        "keywords_optional": ["ingress", "cidr_blocks", "security group", "FAILED", "Checkov", "tfsec", "CKV_AWS"],
+        "exclude_if": ["egress", "PASSED", "SKIPPED"],
+        "file_patterns": ["*.tf", "*.log", "*.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Restrict ingress rules to specific CIDR ranges",
+          "command_template": "# BAD — open to the internet:\nresource \"aws_security_group_rule\" \"http\" {\n  type        = \"ingress\"\n  from_port   = 80\n  to_port     = 80\n  protocol    = \"tcp\"\n  cidr_blocks = [\"0.0.0.0/0\"]  # ← never for SSH, DB, admin\n}\n\n# GOOD — restrict SSH to known IPs:\nresource \"aws_security_group_rule\" \"ssh\" {\n  type        = \"ingress\"\n  from_port   = 22\n  to_port     = 22\n  protocol    = \"tcp\"\n  cidr_blocks = [\"10.0.0.0/8\", \"192.168.1.0/24\"]  # VPN/office only\n}\n\n# GOOD — allow HTTP from load balancer SG only:\nresource \"aws_security_group_rule\" \"http_from_alb\" {\n  type                     = \"ingress\"\n  from_port                = 8080\n  to_port                  = 8080\n  protocol                 = \"tcp\"\n  source_security_group_id = aws_security_group.alb.id  # SG reference\n}",
+          "explanation": "Security groups with 0.0.0.0/0 ingress expose services to the public internet. Only load balancers and public-facing endpoints should accept traffic from 0.0.0.0/0 on ports 80/443. SSH (22), databases (3306, 5432, 27017), and admin interfaces must never be publicly open.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Add Checkov or tfsec to pre-commit and CI",
+          "command_template": "# Install:\npip install checkov\nnpm install -g tfsec\n\n# Run:\ncheckov -d . --framework terraform --check CKV_AWS_24,CKV_AWS_25\ntfsec . --minimum-severity HIGH\n\n# GitHub Actions:\n- uses: bridgecrewio/checkov-action@master\n  with:\n    directory: .\n    framework: terraform\n    soft_fail: false",
+          "explanation": "Integrate IaC security scanning into CI to catch open security groups before they reach production. Checkov and tfsec both check for CIS benchmark violations including open ingress rules.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://www.checkov.io/5.Policy%20Index/terraform.html",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "secret_scanning_push_blocked",
+      "version": "1.0.0",
+      "name": "Secret Scanning Pre-receive Hook Blocked Push",
+      "category": "security",
+      "subcategory": "secrets",
+      "severity": "high",
+      "tags": ["security", "secrets", "git", "pre-receive", "push-protection", "github", "gitleaks"],
+      "detection": {
+        "regex": "Push rejected.*secret|secret scanning.*blocked|push protection.*detected|gitleaks.*found|remote: error.*secret|GH013.*secret scanning",
+        "keywords_required": ["secret", "blocked"],
+        "keywords_optional": ["Push rejected", "push protection", "gitleaks", "GH013", "remote: error"],
+        "exclude_if": [],
+        "file_patterns": ["*.log", "*.txt"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Remove the secret from the commit(s) and rewrite history",
+          "command_template": "# Step 1 — find where the secret is:\ngit log --all -p | grep -n 'AKIA\\|ghp_\\|BEGIN PRIVATE'\n\n# Step 2 — remove from the last commit (if not yet pushed):\ngit reset HEAD~1\n# Fix the file, then:\ngit add . && git commit -m \"fix: remove secret\"\n\n# Step 3 — if already in multiple commits, use git-filter-repo:\npip install git-filter-repo\ngit filter-repo --path .env --invert-paths --force\n\n# Step 4 — force push (coordinate with team):\ngit push --force-with-lease",
+          "explanation": "GitHub Push Protection or a pre-receive gitleaks hook detected a secret in your commits. You must rewrite the git history to remove it — simply deleting the file in a new commit is not sufficient, as the secret remains in history.",
+          "confidence": 0.95,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": true,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Rotate the accidentally-committed secret immediately",
+          "explanation": "Even before fixing the commit, rotate the credential as a priority. Assume the secret was captured by automated scanners the moment the push attempt was made. Identify the service (AWS, GitHub, Stripe, etc.) and revoke/rotate the credential.",
+          "confidence": 0.99,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Add pre-commit hooks to prevent future leaks",
+          "command_template": "# Install pre-commit:\npip install pre-commit\n\n# .pre-commit-config.yaml:\nrepos:\n  - repo: https://github.com/gitleaks/gitleaks\n    rev: v8.18.0\n    hooks:\n      - id: gitleaks\n\n# Install the hooks:\npre-commit install",
+          "explanation": "Pre-commit hooks run gitleaks (or detect-secrets) locally before each commit, catching secrets before they ever reach the remote. This is the earliest and cheapest place to catch them.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.github.com/en/code-security/secret-scanning/push-protection-for-repositories-and-organizations",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    }
+  ]
+}

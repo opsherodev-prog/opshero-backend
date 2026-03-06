@@ -1,0 +1,401 @@
+{
+  "schema_version": "2.0.0",
+  "category": "other",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "memory_exceeded",
+      "version": "1.0.0",
+      "name": "Memory Limit Exceeded",
+      "category": "other",
+      "subcategory": "resources",
+      "severity": "high",
+      "tags": ["memory", "oom", "heap", "resource", "limit"],
+      "detection": {
+        "regex": "MemoryError|ENOMEM: not enough memory|cannot allocate memory",
+        "keywords_required": ["MemoryError", "ENOMEM"],
+        "keywords_optional": ["not enough memory", "cannot allocate", "malloc", "out of memory"],
+        "exclude_if": ["JavaScript heap out of memory", "OOMKilled", "FATAL ERROR: Reached heap limit", "npm ERR!"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase available system memory",
+          "command_template": "NODE_OPTIONS=--max-old-space-size=4096 <command>",
+          "explanation": "The process ran out of available system memory. For Node.js: set `NODE_OPTIONS=--max-old-space-size=4096`. For Java: increase `-Xmx`. For Docker: increase `mem_limit`. For CI: use a larger runner.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Profile and fix memory leaks",
+          "explanation": "If memory grows over time before exhaustion, there's a memory leak. Use: `heapdump` / Chrome DevTools (Node.js), `memory_profiler` (Python), `pprof` (Go), `VisualVM` (Java) to identify and fix the leak.",
+          "confidence": 0.82,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Process large data with streaming",
+          "explanation": "For large file/dataset processing, use streaming instead of loading everything into memory. Node.js streams, Python generators, Java InputStream, Go `bufio.Scanner` all process data incrementally.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "k8s_image_pull_backoff",
+      "version": "1.0.0",
+      "name": "Kubernetes ImagePullBackOff",
+      "category": "other",
+      "subcategory": "kubernetes",
+      "severity": "critical",
+      "tags": ["kubernetes", "k8s", "docker", "image", "registry", "pod"],
+      "detection": {
+        "regex": "ImagePullBackOff|ErrImagePull|rpc error: code = NotFound.*manifest",
+        "keywords_required": ["ImagePullBackOff", "ErrImagePull"],
+        "keywords_optional": ["pull access denied", "repository does not exist", "manifest unknown", "backoff"],
+        "exclude_if": [],
+        "file_patterns": ["*.yaml", "*.yml", "deployment.yaml", "values.yaml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Verify image name and tag",
+          "explanation": "The image specified in the Kubernetes manifest does not exist or the tag is wrong. Check: `kubectl describe pod <pod-name>` for the exact error. Pull the image locally to verify: `docker pull <image>:<tag>`.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Create ImagePullSecret for private registry",
+          "command_template": "kubectl create secret docker-registry regcred --docker-server=<registry> --docker-username=$USER --docker-password=$TOKEN -n <namespace>",
+          "explanation": "For private registries, create a `docker-registry` secret and reference it in your pod spec with `imagePullSecrets`. In managed clusters (EKS/GKE/AKS), use the cloud's built-in registry authentication.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check node's registry access",
+          "explanation": "The Kubernetes node may not have network access to the registry. Verify connectivity from the node: `kubectl run --rm -it test --image=alpine -- wget -q -O- <registry-url>`. Check firewall/VPC rules.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["docker_invalid_base_image", "docker_credential_helper_error"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "terraform_lock_error",
+      "version": "1.0.0",
+      "name": "Terraform State Lock Error",
+      "category": "other",
+      "subcategory": "terraform",
+      "severity": "medium",
+      "tags": ["terraform", "iac", "state", "lock", "S3", "DynamoDB"],
+      "detection": {
+        "regex": "Error: Error acquiring the state lock.*ID: ([a-f0-9\\-]+)|Error locking state|state is already locked",
+        "keywords_required": ["state lock", "acquiring the state lock"],
+        "keywords_optional": ["ID:", "Force unlock", "DynamoDB", "S3", "lock ID"],
+        "exclude_if": ["git", "npm", "docker"],
+        "file_patterns": ["*.tf", "terraform.tfstate"],
+        "variables": {
+          "lock_id": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-lock-id"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Force unlock after confirming no active plan",
+          "command_template": "terraform force-unlock {lock_id}",
+          "explanation": "The Terraform state is locked (usually by another process or a crashed CI run). ONLY run `terraform force-unlock {lock_id}` if you are CERTAIN no other `terraform apply` or `terraform plan` is running. Check your CI for running jobs first.",
+          "confidence": 0.88,
+          "risk": "high",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true,
+          "variables_used": ["lock_id"]
+        },
+        {
+          "rank": 2,
+          "title": "Wait for concurrent run to finish",
+          "explanation": "If another CI pipeline is running `terraform apply`, wait for it to complete. The lock will be released automatically when it finishes.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Manually delete lock from DynamoDB",
+          "explanation": "If using AWS S3 backend with DynamoDB locking, you can manually delete the lock item from DynamoDB: `aws dynamodb delete-item --table-name <table> --key {\"LockID\": {\"S\": \"<bucket>/<path>.tfstate\"}}`.",
+          "confidence": 0.8,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "java_maven_dependency_error",
+      "version": "1.0.0",
+      "name": "Maven Dependency Resolution Failure",
+      "category": "other",
+      "subcategory": "java",
+      "severity": "high",
+      "tags": ["java", "maven", "dependency", "artifact", "repository"],
+      "detection": {
+        "regex": "Could not resolve dependencies for project (.+): Could not find artifact (.+)|Failed to execute goal.*maven",
+        "keywords_required": ["Failed to execute goal", "maven"],
+        "keywords_optional": ["Could not resolve", "dependency resolution", "artifact", "pom.xml", "snapshot", "release"],
+        "exclude_if": ["npm", "pip", "cargo", "go"],
+        "file_patterns": ["pom.xml"],
+        "variables": {
+          "project": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-project"
+          },
+          "artifact": {
+            "from": "regex_group_2",
+            "transform": "strip",
+            "default": "unknown-artifact"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Force update snapshots and releases",
+          "command_template": "mvn clean install -U",
+          "explanation": "Force Maven to update snapshots (`-SNAPSHOT`) and release artifacts from remote repositories. The `-U` flag ignores cached metadata that may be stale.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["artifact"]
+        },
+        {
+          "rank": 2,
+          "title": "Check repository configuration",
+          "explanation": "Verify `<repositories>` and `<pluginRepositories>` in `pom.xml` and `settings.xml` point to the correct repos (Maven Central, corporate Nexus/Artifactory). For private artifacts, ensure authentication is configured.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Clear corrupted local Maven cache",
+          "command_template": "rm -rf ~/.m2/repository && mvn install",
+          "explanation": "A corrupted local Maven repository can cause resolution failures. Delete the local cache and let Maven re-download everything from remote.",
+          "confidence": 0.82,
+          "risk": "medium",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "rust_cargo_lock_error",
+      "version": "1.0.0",
+      "name": "Cargo Lockfile Out of Sync",
+      "category": "other",
+      "subcategory": "rust",
+      "severity": "medium",
+      "tags": ["rust", "cargo", "Cargo.lock", "lockfile", "frozen"],
+      "detection": {
+        "regex": "error: the lock file (.+) needs to be updated but --frozen was passed|Cargo.lock needs to be updated",
+        "keywords_required": ["Cargo.lock", "--frozen"],
+        "keywords_optional": ["needs to be updated", "--locked", "cargo update"],
+        "exclude_if": ["npm", "pip", "maven"],
+        "file_patterns": ["Cargo.toml", "Cargo.lock"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Update Cargo.lock",
+          "command_template": "cargo update",
+          "explanation": "`Cargo.toml` was modified but `Cargo.lock` was not updated to match. Run `cargo update` to regenerate the lockfile. If using `--locked` in CI, commit the updated `Cargo.lock`.",
+          "confidence": 0.95,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Remove --frozen from CI",
+          "explanation": "If you don't need a reproducible build, remove `--frozen` (or `--locked`) from your `cargo build`/`cargo test` CI commands. `--locked` enforces lockfile consistency; remove it if you want auto-updates.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Commit Cargo.lock to version control",
+          "explanation": "For applications (not libraries), `Cargo.lock` should be committed to VCS for reproducible builds. If it's in `.gitignore`, remove it and commit the file.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "go_mod_sum_mismatch",
+      "version": "1.0.0",
+      "name": "Go Module Checksum Mismatch",
+      "category": "other",
+      "subcategory": "go",
+      "severity": "high",
+      "tags": ["go", "golang", "go.sum", "checksum", "modules", "tampering"],
+      "detection": {
+        "regex": "verifying (.+): checksum mismatch|SECURITY ERROR.*verifying|go: (.+): checksum database disabled",
+        "keywords_required": ["go.sum", "checksum mismatch"],
+        "keywords_optional": ["verifying", "SECURITY ERROR", "GONOSUMCHECK", "GONOSUMDB"],
+        "exclude_if": ["npm", "pip", "cargo", "maven"],
+        "file_patterns": ["go.mod", "go.sum"],
+        "variables": {
+          "module": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-module"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Clean module cache and tidy",
+          "command_template": "go clean -modcache && go mod tidy",
+          "explanation": "The `go.sum` file has a checksum that doesn't match the downloaded module `{module}`. Clear the module cache and re-tidy to recalculate correct checksums. This may indicate local cache corruption.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": false,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["module"]
+        },
+        {
+          "rank": 2,
+          "title": "Investigate potential supply chain issue",
+          "explanation": "A checksum mismatch can indicate that the module content changed after you initially downloaded it — a potential supply chain attack or accidental module modification. Verify the module via the Go checksum database: `GONOSUMCHECK= go mod verify`.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use GONOSUMCHECK for private modules",
+          "command_template": "GONOSUMCHECK=<private-module-prefix> go mod tidy",
+          "explanation": "If the module is private and not in the public checksum database, set `GONOSUMCHECK=<prefix>` (e.g. `github.com/myorg/*`) or `GONOSUMDB=*` to bypass sum database verification for private modules.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}

@@ -1,0 +1,506 @@
+{
+  "schema_version": "2.0.0",
+  "category": "terraform",
+  "updated_at": "2026-02-25T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "terraform_state_lock_timeout",
+      "version": "1.0.0",
+      "name": "Terraform State Lock Timeout",
+      "category": "terraform",
+      "subcategory": "state",
+      "severity": "high",
+      "tags": ["terraform", "state", "lock", "dynamodb", "gcs", "concurrent"],
+      "detection": {
+        "regex": "Error acquiring the state lock|timeout while waiting for state lock|Lock Info:|ID:\\s+[0-9a-f-]{36}",
+        "keywords_required": ["state lock"],
+        "keywords_optional": ["Error acquiring", "timeout", "Lock Info", "DynamoDB", "lock_id"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf", "*.tfvars", ".github/workflows/*.yml"],
+        "variables": {
+          "lock_id": {
+            "from": "regex",
+            "pattern": "ID:\\s+([0-9a-f-]{36})",
+            "transform": "trim",
+            "default": "<lock-id>"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Verify no other Terraform process is running",
+          "command_template": "# Check for active Terraform processes\nps aux | grep terraform\n\n# If the process is dead and the lock is stale, force-unlock:\nterraform force-unlock <lock-id>",
+          "explanation": "The state backend (DynamoDB, GCS, S3) holds a lock to prevent concurrent modifications. If a previous `terraform apply` was interrupted (CI runner killed, network drop), the lock may be stale. First confirm no legitimate process holds it.",
+          "confidence": 0.9,
+          "risk": "medium",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Force-unlock the stale state lock",
+          "command_template": "terraform force-unlock -force <lock-id>",
+          "explanation": "Only run this after confirming no other Terraform process is active. Force-unlocking while another apply is running will corrupt the state file.",
+          "confidence": 0.85,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Add -lock-timeout to allow waiting",
+          "command_template": "terraform apply -lock-timeout=5m",
+          "explanation": "If multiple CI pipelines legitimately run Terraform concurrently, add `-lock-timeout` so they queue instead of failing immediately. Alternatively, serialize runs with branch protection or queue-based CI.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["terraform_state_drift"]
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/language/state/locking",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_provider_auth_failed",
+      "version": "1.0.0",
+      "name": "Terraform Provider Authentication Failure",
+      "category": "terraform",
+      "subcategory": "auth",
+      "severity": "critical",
+      "tags": ["terraform", "auth", "aws", "gcp", "azure", "credentials", "iam"],
+      "detection": {
+        "regex": "Error: No valid credential sources found|NoCredentialProviders|error configuring Terraform AWS Provider|google: could not find default credentials|ClientAuthenticationError|The client .* does not have authorization",
+        "keywords_required": ["credential"],
+        "keywords_optional": ["AWS_ACCESS_KEY_ID", "GOOGLE_APPLICATION_CREDENTIALS", "ARM_CLIENT_ID", "No valid credential", "authorization"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf", ".github/workflows/*.yml"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Verify cloud provider credentials are set in CI",
+          "command_template": "# AWS — check these env vars are set:\necho $AWS_ACCESS_KEY_ID\necho $AWS_SECRET_ACCESS_KEY\necho $AWS_DEFAULT_REGION\n\n# GCP — check service account key:\necho $GOOGLE_APPLICATION_CREDENTIALS\n\n# Azure — check service principal:\necho $ARM_CLIENT_ID\necho $ARM_CLIENT_SECRET\necho $ARM_TENANT_ID\necho $ARM_SUBSCRIPTION_ID",
+          "explanation": "Terraform providers authenticate using environment variables or credential files. In CI, these must be set as secrets. Missing or expired credentials trigger this error.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use OIDC / Workload Identity Federation (recommended for CI)",
+          "command_template": "# GitHub Actions example (AWS OIDC):\n# In your workflow:\n- uses: aws-actions/configure-aws-credentials@v4\n  with:\n    role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole\n    aws-region: us-east-1",
+          "explanation": "Static long-lived credentials are a security risk. Use OIDC (GitHub Actions) or Workload Identity Federation (GCP) to get short-lived tokens — no secrets to rotate or leak.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Check IAM permissions for the CI role/user",
+          "command_template": "# AWS — simulate the policy:\naws iam simulate-principal-policy \\\n  --policy-source-arn arn:aws:iam::ACCOUNT:role/CI-Role \\\n  --action-names ec2:DescribeInstances s3:PutObject",
+          "explanation": "Authentication may succeed but authorization may fail. Check that the IAM role/service account has the required permissions for the resources Terraform manages.",
+          "confidence": 0.8,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/language/providers/configuration",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_resource_already_exists",
+      "version": "1.0.0",
+      "name": "Terraform Resource Already Exists",
+      "category": "terraform",
+      "subcategory": "state",
+      "severity": "high",
+      "tags": ["terraform", "import", "state", "conflict", "idempotency"],
+      "detection": {
+        "regex": "Error: .* already exists|already exists, use terraform import|EntityAlreadyExists|BucketAlreadyOwnedByYou|ResourceAlreadyExistsException",
+        "keywords_required": ["already exists"],
+        "keywords_optional": ["terraform import", "EntityAlreadyExists", "BucketAlreadyOwned"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf"],
+        "variables": {
+          "resource_type": {
+            "from": "regex",
+            "pattern": "Error creating ([A-Za-z0-9]+):",
+            "transform": "trim",
+            "default": "<resource-type>"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Import the existing resource into Terraform state",
+          "command_template": "# Find the resource address in your .tf files, then:\nterraform import <resource_type>.<resource_name> <provider-resource-id>\n\n# Example — import an existing S3 bucket:\nterraform import aws_s3_bucket.my_bucket my-existing-bucket-name\n\n# Example — import an existing GCP GKE cluster:\nterraform import google_container_cluster.primary projects/my-project/locations/us-central1/clusters/my-cluster",
+          "explanation": "The resource exists in the cloud but not in Terraform state. `terraform import` reconciles state with reality without destroying/recreating the resource.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use moved block or refactored resource address",
+          "command_template": "# In your .tf file, add a moved block:\nmoved {\n  from = module.old.aws_s3_bucket.bucket\n  to   = aws_s3_bucket.bucket\n}",
+          "explanation": "If you renamed or restructured a resource in Terraform code, use a `moved` block (Terraform 1.1+) to tell Terraform the resource is the same — avoids destroy+recreate.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Delete the conflicting cloud resource manually (if expendable)",
+          "explanation": "If the existing resource is not needed, delete it from the cloud console or CLI, then re-run `terraform apply`. Only do this for non-production, non-data resources.",
+          "confidence": 0.6,
+          "risk": "high",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/cli/commands/import",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_plan_destroy_warning",
+      "version": "1.0.0",
+      "name": "Terraform Plan Will Destroy Many Resources",
+      "category": "terraform",
+      "subcategory": "safety",
+      "severity": "critical",
+      "tags": ["terraform", "destroy", "plan", "safety", "drift", "breaking-change"],
+      "detection": {
+        "regex": "will be destroyed|Plan: \\d+ to add, \\d+ to change, \\d+ to destroy|must be replaced|forces replacement",
+        "keywords_required": ["to destroy"],
+        "keywords_optional": ["will be destroyed", "must be replaced", "forces replacement", "-/+"],
+        "exclude_if": ["0 to destroy"],
+        "file_patterns": ["*.tf", "*.tfplan"],
+        "variables": {
+          "destroy_count": {
+            "from": "regex",
+            "pattern": "Plan: \\d+ to add, \\d+ to change, (\\d+) to destroy",
+            "transform": "trim",
+            "default": "unknown"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Review the plan output carefully before applying",
+          "command_template": "# Save the plan to a file for review:\nterraform plan -out=tfplan.binary\nterraform show tfplan.binary\n\n# Filter just the destroys:\nterraform show tfplan.binary | grep -A3 '# .* will be destroyed'",
+          "explanation": "Unexpected destroys often indicate a resource rename, index change, for_each key change, or provider version upgrade. Never blindly apply a plan with unexpected destructions in production.",
+          "confidence": 0.95,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use lifecycle prevent_destroy to guard critical resources",
+          "command_template": "# In your resource block:\nresource \"aws_rds_instance\" \"primary\" {\n  # ... config ...\n  lifecycle {\n    prevent_destroy = true\n  }\n}",
+          "explanation": "Add `lifecycle { prevent_destroy = true }` to databases, storage buckets, and other stateful resources. Terraform will error if a plan tries to destroy them, forcing a human review.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use -target to apply only the safe changes",
+          "command_template": "# Apply only specific resources, skip the dangerous destroys:\nterraform apply -target=aws_security_group.app -target=aws_lb.main",
+          "explanation": "`-target` limits apply to specific resources. Use this to apply the safe additions/changes while you investigate the unexpected destroys. Note: -target is a workaround, not a long-term pattern.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["terraform_state_drift"],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_state_drift",
+      "version": "1.0.0",
+      "name": "Terraform State Drift Detected",
+      "category": "terraform",
+      "subcategory": "state",
+      "severity": "high",
+      "tags": ["terraform", "drift", "state", "refresh", "out-of-sync"],
+      "detection": {
+        "regex": "Objects have changed outside of Terraform|Note: Objects have changed|drift|configuration was changed outside of Terraform",
+        "keywords_required": ["changed outside of Terraform"],
+        "keywords_optional": ["drift", "Objects have changed", "outside of Terraform"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Run terraform refresh to sync state with reality",
+          "command_template": "# Terraform 0.15.4+: refresh is done automatically during plan\nterraform plan -refresh=true\n\n# To explicitly refresh state:\nterraform apply -refresh-only",
+          "explanation": "Drift occurs when someone modified a cloud resource outside of Terraform (manual console edits, scripts, other tools). `terraform apply -refresh-only` updates the state file to match current reality without changing infrastructure.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Identify and remediate the source of drift",
+          "explanation": "Manual changes are a drift risk. Enforce Terraform-only changes via IAM policies that prevent direct console access to Terraform-managed resources. Consider enabling AWS Config or GCP Policy Intelligence for drift alerting.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use terraformer or cf-terraforming to import drifted resources",
+          "command_template": "# Import individual drifted resources:\nterraform import aws_security_group.app sg-0123456789abcdef0",
+          "explanation": "If the drift is intentional (manual change you want to keep), import the modified resource so Terraform's state matches reality, then codify the change in your .tf files.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["terraform_state_lock_timeout"],
+        "often_causes": ["terraform_plan_destroy_warning"]
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/tutorials/state/refresh",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_module_not_found",
+      "version": "1.0.0",
+      "name": "Terraform Module Source Not Found",
+      "category": "terraform",
+      "subcategory": "modules",
+      "severity": "high",
+      "tags": ["terraform", "module", "registry", "source", "dependency"],
+      "detection": {
+        "regex": "Error: Module not installed|Failed to query available provider packages|Could not retrieve the list of available versions|module .* not found|failed to download module",
+        "keywords_required": ["module"],
+        "keywords_optional": ["not installed", "not found", "failed to download", "Could not retrieve"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Run terraform init to download modules",
+          "command_template": "terraform init\n\n# If using a module registry with authentication:\nterraform init -upgrade",
+          "explanation": "Terraform modules must be downloaded with `terraform init` before `plan` or `apply`. This is often the missing step in CI pipelines.",
+          "confidence": 0.95,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check module source path and version constraints",
+          "command_template": "# In your module block, verify the source:\nmodule \"vpc\" {\n  source  = \"terraform-aws-modules/vpc/aws\"\n  version = \"~> 5.0\"   # check this version exists\n}\n\n# List available versions:\ncurl https://registry.terraform.io/v1/modules/terraform-aws-modules/vpc/aws/versions",
+          "explanation": "The module may not exist at that registry path, or the specified version constraint may not match any published version. Check the Terraform registry for the exact source address and available versions.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Configure Terraform registry authentication for private modules",
+          "command_template": "# Add to ~/.terraformrc or CI environment:\ncredentials \"registry.terraform.io\" {\n  token = \"<your-token>\"\n}\n\n# Or set via environment variable:\nexport TF_TOKEN_registry_terraform_io=\"<token>\"",
+          "explanation": "Private module registries require authentication. Set the token in the CLI config file or via environment variable in CI.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/language/modules/sources",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_version_constraint",
+      "version": "1.0.0",
+      "name": "Terraform Version Constraint Not Satisfied",
+      "category": "terraform",
+      "subcategory": "configuration",
+      "severity": "high",
+      "tags": ["terraform", "version", "constraint", "required_version", "tfenv"],
+      "detection": {
+        "regex": "Error: Unsupported Terraform Core version|required_version|your Terraform version .* does not satisfy|This configuration does not support Terraform version",
+        "keywords_required": ["required_version"],
+        "keywords_optional": ["Unsupported Terraform Core version", "does not satisfy", "constraint"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf", "*.tfvars", ".terraform-version"],
+        "variables": {
+          "required_version": {
+            "from": "regex",
+            "pattern": "required_version\\s*=\\s*\"([^\"]+)\"",
+            "transform": "trim",
+            "default": "<version-constraint>"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Switch to the required Terraform version using tfenv",
+          "command_template": "# Install tfenv:\nbrew install tfenv  # macOS\n# or: https://github.com/tfutils/tfenv\n\n# List available versions:\ntfenv list-remote\n\n# Install and use the required version:\ntfenv install 1.7.0\ntfenv use 1.7.0\n\n# Or pin per-project via .terraform-version file:\necho '1.7.0' > .terraform-version",
+          "explanation": "The Terraform binary version in CI doesn't satisfy the `required_version` constraint in your configuration. Use tfenv (or asdf) to switch versions, and commit a `.terraform-version` file to pin the version for the whole team.",
+          "confidence": 0.95,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Update the required_version constraint in your config",
+          "command_template": "# In versions.tf or main.tf:\nterraform {\n  required_version = \">= 1.5.0, < 2.0.0\"\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n}",
+          "explanation": "If you intentionally want to support a newer Terraform version, update the constraint. Use `>=` with an upper bound to avoid accidental breaking upgrades.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://developer.hashicorp.com/terraform/language/settings#specifying-a-required-terraform-version",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    },
+    {
+      "pattern_id": "terraform_apply_quota_exceeded",
+      "version": "1.0.0",
+      "name": "Terraform Apply Cloud Quota Exceeded",
+      "category": "terraform",
+      "subcategory": "quota",
+      "severity": "high",
+      "tags": ["terraform", "quota", "limit", "aws", "gcp", "azure", "service-limit"],
+      "detection": {
+        "regex": "Error: .*(quota|limit) exceeded|QuotaExceeded|LimitExceeded|ResourceQuotaExceeded|you have exceeded your|QUOTA_EXCEEDED|TooManyRequestsException|Quota .* has been exceeded",
+        "keywords_required": ["quota"],
+        "keywords_optional": ["exceeded", "limit", "QuotaExceeded", "LimitExceeded", "QUOTA_EXCEEDED"],
+        "exclude_if": [],
+        "file_patterns": ["*.tf"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Identify which quota is exceeded and request an increase",
+          "command_template": "# AWS — check service quotas:\naws service-quotas list-service-quotas --service-code ec2\naws service-quotas request-service-quota-increase \\\n  --service-code ec2 \\\n  --quota-code L-1216C47A \\\n  --desired-value 32\n\n# GCP — check quotas:\ngcloud compute project-info describe --project=my-project | grep -A2 quota\n\n# Azure — check usage:\naz vm list-usage --location eastus --output table",
+          "explanation": "Cloud providers enforce per-account, per-region quotas. Identify the specific quota (e.g., vCPU count, EIP count) and request an increase via the provider's support console.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Deploy to a different region or use a different resource type",
+          "explanation": "Quotas are per-region. If you need to deploy immediately, consider an alternate region or a smaller instance type that fits within existing quotas.",
+          "confidence": 0.7,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "source": "opshero-patterns",
+        "author": "opshero-team",
+        "docs_url": "https://docs.aws.amazon.com/general/latest/gr/aws_service_limits.html",
+        "stats": { "match_count": 0, "helpful_count": 0, "not_helpful_count": 0 }
+      }
+    }
+  ]
+}

@@ -64,7 +64,9 @@ logger = logging.getLogger(__name__)
 # ── Pattern loading ────────────────────────────────────────────────────────────
 
 PATTERNS_DIR = (
-    Path(__file__).parent.parent / "shared" / "patterns"
+    Path(__file__).parent / "shared" / "patterns"
+    if (Path(__file__).parent / "shared" / "patterns").exists()
+    else Path(__file__).parent.parent / "shared" / "patterns"
 )
 
 

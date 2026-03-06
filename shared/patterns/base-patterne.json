@@ -1,0 +1,834 @@
+{
+  "version": 1,
+  "patterns": [
+    {
+      "pattern_id": "docker_missing_package",
+      "name": "Docker Missing APT Package",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "E: Unable to locate package (.+)",
+        "keywords": ["Unable to locate package", "apt-get", "dpkg"],
+        "file_patterns": ["Dockerfile", "*.dockerfile"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install the missing package", "command_template": "RUN apt-get update && apt-get install -y {package}", "explanation": "The Docker build failed because a required package is not installed. Add the package to your Dockerfile.", "base_confidence": 0.92, "variables": ["package"]},
+        {"rank": 2, "title": "Use a different base image", "explanation": "Consider using a base image that includes the required package, like python:3.11 instead of python:3.11-slim.", "base_confidence": 0.75},
+        {"rank": 3, "title": "Check package name", "explanation": "The package name might be different in the container's Linux distribution. Search for the correct package name.", "base_confidence": 0.6}
+      ]
+    },
+    {
+      "pattern_id": "docker_copy_not_found",
+      "name": "Docker COPY Source Not Found",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "COPY failed: file not found in build context or excluded by .dockerignore: stat (.+): file does not exist",
+        "keywords": ["COPY failed", "file not found", ".dockerignore"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Check file path in COPY instruction", "explanation": "The file or directory specified in COPY does not exist. Verify the path is correct relative to the build context.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Check .dockerignore", "explanation": "The file might be excluded by .dockerignore. Review your .dockerignore file and remove the exclusion if needed.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Verify build context", "explanation": "Ensure you're running docker build from the correct directory with the right build context.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "docker_invalid_instruction",
+      "name": "Docker Invalid Instruction",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "unknown instruction: (.+)",
+        "keywords": ["unknown instruction", "Dockerfile"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix Dockerfile instruction typo", "explanation": "Check for typos in Dockerfile keywords like FROM, RUN, COPY, etc.", "base_confidence": 0.95}
+      ]
+    },
+    {
+      "pattern_id": "docker_invalid_base_image",
+      "name": "Docker Invalid or Inaccessible Base Image",
+      "category": "docker",
+      "severity": "critical",
+      "rules": {
+        "regex": "manifest unknown|pull access denied|denied: requested access to the resource is denied|Error response from daemon: pull access denied",
+        "keywords": ["manifest unknown", "pull access denied", "denied", "unauthorized"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Verify image name and tag", "explanation": "The base image name or tag may be incorrect. Check the image exists on Docker Hub or your registry.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use a public image", "explanation": "If using a private image, ensure you're logged in with docker login and have access.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Pin a specific tag", "explanation": "Avoid using :latest. Pin to a specific version like python:3.11.2-slim.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "docker_port_conflict",
+      "name": "Docker Port Already in Use",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "port is already allocated|bind: address already in use|listen tcp.*: address already in use",
+        "keywords": ["port", "already allocated", "already in use", "bind"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Change the exposed port", "explanation": "The port is already in use. Change the port mapping in your docker run or docker-compose.yml.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Stop conflicting container", "explanation": "Stop the container using the port: docker ps to find it, then docker stop <container_id>.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use dynamic port mapping", "explanation": "Map to a random host port: docker run -p 3000 (omit host port).", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "docker_permission_denied",
+      "name": "Docker Permission Denied in Container",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "Permission denied|EACCES|Operation not permitted",
+        "keywords": ["Permission denied", "EACCES", "not permitted"],
+        "file_patterns": ["Dockerfile"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix file ownership in Dockerfile", "explanation": "Add USER directive or chown files: RUN chown -R app:app /app", "base_confidence": 0.88},
+        {"rank": 2, "title": "Run as non-root user", "explanation": "Create and use a non-root user in your Dockerfile for security.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Check volume mount permissions", "explanation": "If using volumes, ensure the host directory has correct permissions.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "docker_layer_cache_failure",
+      "name": "Docker Layer Cache Export Failed",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "failed to export layer|failed to compute cache key|error building layer",
+        "keywords": ["failed to export", "cache key", "building layer"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Clear Docker build cache", "command_template": "docker builder prune -f", "explanation": "Corrupted cache. Clear it and rebuild.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Use --no-cache for clean build", "command_template": "docker build --no-cache", "explanation": "Build without cache to avoid corrupted layer state.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Reorder Dockerfile instructions", "explanation": "Put rarely-changing instructions first to improve cache hits.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "docker_multi_stage_error",
+      "name": "Docker Multi-Stage Build Failed",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "failed to solve with frontend|failed to solve: process \\\"(.+)\\\" did not complete successfully",
+        "keywords": ["failed to solve", "frontend", "multi-stage"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Verify stage names", "explanation": "Ensure COPY --from= references an existing stage name.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Check intermediate stage builds", "explanation": "Each stage must build successfully. Check the failing stage's instructions.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Simplify build", "explanation": "Temporarily reduce to single-stage build to isolate the issue.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "docker_network_error",
+      "name": "Docker Network Unreachable During Build",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "network unreachable|Could not resolve host|Temporary failure in name resolution|ETIMEDOUT|ENOTFOUND",
+        "keywords": ["network unreachable", "Could not resolve", "ETIMEDOUT", "name resolution"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Check DNS in CI", "explanation": "CI runners may have restricted network. Configure DNS or use --network=host for build.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Retry the build", "explanation": "Transient network issue. Retry the pipeline.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Use buildkit", "explanation": "DOCKER_BUILDKIT=1 can improve network handling during build.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "docker_no_space_left",
+      "name": "Docker No Space Left on Device",
+      "category": "docker",
+      "severity": "critical",
+      "rules": {
+        "regex": "no space left on device|ENOSPC|disk full",
+        "keywords": ["no space left", "ENOSPC", "disk"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Clean Docker system", "command_template": "docker system prune -af", "explanation": "Remove unused images, containers, and build cache to free space.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Increase disk space", "explanation": "CI runners may have limited disk. Request more or use larger runners.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use smaller base images", "explanation": "Switch to alpine or slim variants to reduce image size.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "docker_exec_format_error",
+      "name": "Docker Exec Format Error",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "exec format error|exec user process caused|invalid architecture",
+        "keywords": ["exec format error", "invalid architecture"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Match platform", "explanation": "Image was built for different architecture (e.g. arm64 vs amd64). Use --platform=linux/amd64 if needed.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Use multi-arch base image", "explanation": "Ensure your base image supports your target platform.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Build for target platform", "command_template": "docker buildx build --platform linux/amd64", "explanation": "Explicitly build for the target platform.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "docker_credential_helper_error",
+      "name": "Docker Credential Helper Error",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "error getting credentials|docker-credential.* returned error|could not find credentials",
+        "keywords": ["credentials", "credential helper", "authentication"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Login to registry", "command_template": "echo $TOKEN | docker login -u $USER --password-stdin ghcr.io", "explanation": "Authenticate with the container registry before pulling.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Configure credentials in CI", "explanation": "Store registry credentials as GitHub Actions secrets and use them in the workflow.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Check config.json", "explanation": "Remove or fix credsStore in ~/.docker/config.json if misconfigured.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "docker_dockerignore_excluded",
+      "name": "File Excluded by .dockerignore",
+      "category": "docker",
+      "severity": "medium",
+      "rules": {
+        "regex": "excluded by .dockerignore|when matching.*dockerignore",
+        "keywords": [".dockerignore", "excluded"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Update .dockerignore", "explanation": "Remove the pattern that excludes the file you need in the build context.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Use exception rule", "explanation": "Add !filename to include a file that would be excluded by a pattern.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Verify build context", "explanation": "Ensure the file exists in the directory used as build context.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "docker_sigkill_oom",
+      "name": "Docker Container Killed (OOM)",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "Container killed|Killed|Out of memory|OOMKilled|exit code 137",
+        "keywords": ["Killed", "Out of memory", "OOMKilled", "137"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase memory limit", "explanation": "Add memory limit in docker-compose or k8s: memory: 2g", "base_confidence": 0.88},
+        {"rank": 2, "title": "Optimize application memory", "explanation": "Reduce memory usage in the application (e.g. NODE_OPTIONS=--max-old-space-size=2048).", "base_confidence": 0.85},
+        {"rank": 3, "title": "Check for memory leaks", "explanation": "Profile the application for memory leaks.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "docker_dockerfile_not_found",
+      "name": "Dockerfile Not Found",
+      "category": "docker",
+      "severity": "high",
+      "rules": {
+        "regex": "Cannot locate Dockerfile|dockerfile not found|unable to prepare context",
+        "keywords": ["Dockerfile", "not found", "locate"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Specify Dockerfile path", "command_template": "docker build -f path/to/Dockerfile .", "explanation": "Use -f to point to the correct Dockerfile location.", "base_confidence": 0.95},
+        {"rank": 2, "title": "Run from correct directory", "explanation": "Ensure you're in the directory containing the Dockerfile.", "base_confidence": 0.9},
+        {"rank": 3, "title": "Check GitHub Actions path", "explanation": "In CI, use working-directory or correct paths for the Dockerfile.", "base_confidence": 0.85}
+      ]
+    },
+    {
+      "pattern_id": "npm_package_not_found",
+      "name": "NPM Package Not Found",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "npm ERR! 404 Not Found - GET https://registry.npmjs.org/(.+) - Not found",
+        "keywords": ["npm ERR!", "404", "Not Found", "registry.npmjs.org"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Check package name spelling", "command_template": "npm search {package}", "explanation": "The package name might be misspelled. Search for the correct package name.", "base_confidence": 0.88, "variables": ["package"]},
+        {"rank": 2, "title": "Package might be deprecated or removed", "explanation": "The package may have been unpublished from npm. Look for an alternative package.", "base_confidence": 0.75},
+        {"rank": 3, "title": "Check if it's a private package", "explanation": "If this is a private package, ensure you're authenticated and have access.", "base_confidence": 0.6}
+      ]
+    },
+    {
+      "pattern_id": "npm_peer_dependency",
+      "name": "NPM Peer Dependency Conflict",
+      "category": "npm",
+      "severity": "medium",
+      "rules": {
+        "regex": "npm ERR! peer dep missing: (.+), required by (.+)",
+        "keywords": ["peer dep missing", "ERESOLVE", "peer dependency"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install with legacy peer deps", "command_template": "npm install --legacy-peer-deps", "explanation": "Force npm to ignore peer dependency conflicts. Use this as a quick fix.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Install the missing peer dependency", "explanation": "Install the required peer dependency manually at the correct version.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Update conflicting packages", "command_template": "npm update", "explanation": "Update packages to compatible versions that satisfy peer dependencies.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "npm_out_of_disk_space",
+      "name": "NPM No Space Left on Device",
+      "category": "npm",
+      "severity": "critical",
+      "rules": {
+        "regex": "npm ERR! ENOSPC: no space left on device",
+        "keywords": ["ENOSPC", "no space left"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Clean npm cache", "command_template": "npm cache clean --force", "explanation": "Free up disk space by cleaning npm cache and old build artifacts.", "base_confidence": 0.85}
+      ]
+    },
+    {
+      "pattern_id": "npm_registry_timeout",
+      "name": "NPM Registry Timeout",
+      "category": "npm",
+      "severity": "medium",
+      "rules": {
+        "regex": "ETIMEDOUT|ECONNRESET|network timeout|request to .* failed",
+        "keywords": ["ETIMEDOUT", "ECONNRESET", "timeout", "network"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase timeout", "command_template": "npm config set fetch-timeout 60000", "explanation": "Increase the fetch timeout for slow networks.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Use registry mirror", "command_template": "npm config set registry https://registry.npmmirror.com", "explanation": "Try a mirror if the main registry is unreachable.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Retry the install", "explanation": "Transient network issue. Retry the pipeline or npm install.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "npm_version_conflict",
+      "name": "NPM Dependency Version Conflict",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "ERESOLVE unable to resolve dependency tree|Could not resolve dependency",
+        "keywords": ["ERESOLVE", "unable to resolve", "dependency tree"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Use legacy peer deps", "command_template": "npm install --legacy-peer-deps", "explanation": "Bypass peer dependency resolution conflicts.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Use overrides", "explanation": "Add overrides in package.json to force specific versions.", "base_confidence": 0.82},
+        {"rank": 3, "title": "Delete lockfile and reinstall", "command_template": "rm -f package-lock.json && npm install", "explanation": "Fresh resolution may resolve conflicts (backup first).", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "npm_native_module_build",
+      "name": "NPM Native Module Build Failure",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "gyp ERR!|node-gyp|Error: Can't find Python|MSBUILD : error",
+        "keywords": ["gyp ERR!", "node-gyp", "Python", "MSBUILD"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install build tools", "explanation": "Install python, make, g++ on Linux. On Windows: npm install --global windows-build-tools", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use prebuilt binaries", "explanation": "Try npm rebuild or ensure node version matches prebuilt binaries.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use Docker for CI", "explanation": "Use a CI image with build tools pre-installed (e.g. node:20).", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "npm_lockfile_conflict",
+      "name": "NPM Lockfile Conflict",
+      "category": "npm",
+      "severity": "medium",
+      "rules": {
+        "regex": "conflict in package-lock|merge conflict in package-lock|lockfileVersion",
+        "keywords": ["package-lock", "conflict", "merge"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Regenerate lockfile", "command_template": "rm package-lock.json && npm install", "explanation": "Delete and regenerate the lockfile to resolve conflicts.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use npm ci after resolving", "explanation": "After fixing, use npm ci for deterministic installs in CI.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Resolve git merge", "explanation": "If merge conflict, resolve manually and regenerate lockfile.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "npm_install_memory",
+      "name": "NPM Install Out of Memory",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "JavaScript heap out of memory|FATAL ERROR: Reached heap limit",
+        "keywords": ["heap out of memory", "heap limit", "FATAL ERROR"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase Node memory", "command_template": "NODE_OPTIONS=--max-old-space-size=4096 npm install", "explanation": "Increase the Node.js heap size for npm install.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use npm ci", "command_template": "NODE_OPTIONS=--max-old-space-size=4096 npm ci", "explanation": "npm ci is faster and uses less memory than npm install.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Install in stages", "explanation": "Install dependencies in smaller batches if possible.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "npm_ebadengine",
+      "name": "NPM Unsupported Engine",
+      "category": "npm",
+      "severity": "medium",
+      "rules": {
+        "regex": "Unsupported engine|error EBADENGINE|not matching your node",
+        "keywords": ["EBADENGINE", "Unsupported engine", "node version"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Upgrade Node version", "command_template": "nvm install 20 && nvm use 20", "explanation": "Use a Node version that satisfies the package's engine requirement.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use --ignore-engines", "command_template": "npm install --ignore-engines", "explanation": "Force install despite engine mismatch (use with caution).", "base_confidence": 0.8},
+        {"rank": 3, "title": "Update package.json engines", "explanation": "Adjust the engines field in package.json if you control the package.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "npm_eperm",
+      "name": "NPM Permission Error",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "EPERM: operation not permitted|EACCES: permission denied",
+        "keywords": ["EPERM", "EACCES", "permission denied", "operation not permitted"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix npm cache permissions", "command_template": "sudo chown -R $(whoami) ~/.npm", "explanation": "Fix ownership of the npm cache directory.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Don't use sudo", "explanation": "Never use sudo with npm install. Use nvm or similar for local Node.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Clear npm cache", "command_template": "npm cache clean --force", "explanation": "Corrupted cache can cause permission errors.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "npm_invalid_json",
+      "name": "NPM Invalid package.json",
+      "category": "npm",
+      "severity": "high",
+      "rules": {
+        "regex": "npm ERR! Invalid JSON|JSON.parse|Unexpected token",
+        "keywords": ["Invalid JSON", "JSON.parse", "package.json"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Validate package.json", "command_template": "npm pack --dry-run", "explanation": "Check for JSON syntax errors in package.json.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Check for trailing commas", "explanation": "JSON does not allow trailing commas. Remove them.", "base_confidence": 0.9},
+        {"rank": 3, "title": "Use a JSON validator", "explanation": "Use jsonlint or an IDE to find and fix syntax errors.", "base_confidence": 0.85}
+      ]
+    },
+    {
+      "pattern_id": "npm_self_signed_cert",
+      "name": "NPM Self-Signed Certificate",
+      "category": "npm",
+      "severity": "medium",
+      "rules": {
+        "regex": "self signed certificate|UNABLE_TO_VERIFY_LEAF_SIGNATURE|certificate has expired",
+        "keywords": ["self signed", "certificate", "UNABLE_TO_VERIFY"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Use strict-ssl false (dev only)", "command_template": "npm config set strict-ssl false", "explanation": "Only for development behind corporate proxy. Never in production.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Add CA certificate", "explanation": "Configure NODE_EXTRA_CA_CERTS with your corporate CA cert.", "base_confidence": 0.9},
+        {"rank": 3, "title": "Check system date", "explanation": "Expired system date can cause certificate validation to fail.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "python_module_not_found",
+      "name": "Python Module Not Found",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "ModuleNotFoundError: No module named '(.+)'",
+        "keywords": ["ModuleNotFoundError", "No module named"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install the missing package", "command_template": "pip install {package}", "explanation": "The Python package is not installed. Add it to requirements.txt and install.", "base_confidence": 0.92, "variables": ["package"]},
+        {"rank": 2, "title": "Update requirements.txt", "explanation": "Make sure the package is listed in your requirements.txt file.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Check virtual environment", "explanation": "Ensure your CI is using the correct virtual environment with all dependencies.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "python_syntax_error",
+      "name": "Python Syntax Error",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "SyntaxError: (.+) \\((.+), line (\\d+)\\)",
+        "keywords": ["SyntaxError", "invalid syntax"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix syntax error at specified line", "explanation": "There's a syntax error in your code. Check the specified file and line number.", "base_confidence": 0.95},
+        {"rank": 2, "title": "Check for missing brackets or quotes", "explanation": "Common causes include missing parentheses, brackets, or unclosed strings.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Check Python version compatibility", "explanation": "Some syntax may not be supported in older Python versions.", "base_confidence": 0.6}
+      ]
+    },
+    {
+      "pattern_id": "python_pip_timeout",
+      "name": "Pip Connection Timeout",
+      "category": "python",
+      "severity": "medium",
+      "rules": {
+        "regex": "pip._vendor.urllib3.exceptions.ReadTimeoutError|ReadTimeoutError",
+        "keywords": ["ReadTimeoutError", "pip", "timeout"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase pip timeout", "command_template": "pip install --default-timeout=100 -r requirements.txt", "explanation": "The network connection is slow. Increase the default timeout for pip.", "base_confidence": 0.9}
+      ]
+    },
+    {
+      "pattern_id": "python_ssl_certificate",
+      "name": "Python SSL Certificate Verify Failed",
+      "category": "python",
+      "severity": "medium",
+      "rules": {
+        "regex": "SSL: CERTIFICATE_VERIFY_FAILED|ssl.SSLCertVerificationError",
+        "keywords": ["CERTIFICATE_VERIFY_FAILED", "SSL", "certificate"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Use trusted host (dev only)", "command_template": "pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt", "explanation": "Bypass SSL verification for dev/corporate proxy. Avoid in production.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Update certificates", "command_template": "pip install --upgrade certifi", "explanation": "Update the certifi package for latest CA bundle.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Configure NODE_EXTRA_CA_CERTS", "explanation": "If behind corporate proxy, add the CA cert to trusted store.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "python_compiler_missing",
+      "name": "Python Compiler/Build Tools Missing",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "error: command 'gcc' failed|Microsoft Visual C\\+\\+ .* required|error: Microsoft Visual C\\+\\+ 14\\.0 or greater is required",
+        "keywords": ["gcc", "Microsoft Visual C++", "command failed"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install build essentials (Linux)", "command_template": "apt-get install -y build-essential python3-dev", "explanation": "Install gcc, g++, make for compiling C extensions.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Install Visual C++ (Windows)", "explanation": "Install Microsoft C++ Build Tools from Visual Studio.", "base_confidence": 0.9},
+        {"rank": 3, "title": "Use prebuilt wheels", "explanation": "Prefer packages with prebuilt wheels to avoid compilation.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "python_requirements_format",
+      "name": "Python Invalid Requirement",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "Invalid requirement|Parse error|Expected version spec",
+        "keywords": ["Invalid requirement", "Parse error", "requirements"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix requirements syntax", "explanation": "Use valid pip format: package==1.0.0 or package>=1.0,<2.0", "base_confidence": 0.92},
+        {"rank": 2, "title": "Check for typos", "explanation": "Package names are case-sensitive. Verify spelling.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Validate with pip", "command_template": "pip install -r requirements.txt --dry-run", "explanation": "Validate requirements file without installing.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "python_venv_not_found",
+      "name": "Python venv Module Not Found",
+      "category": "python",
+      "severity": "medium",
+      "rules": {
+        "regex": "No module named 'venv'|The virtual environment was not created",
+        "keywords": ["venv", "virtual environment", "not created"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install venv", "command_template": "apt-get install -y python3-venv", "explanation": "On Debian/Ubuntu, install the venv package.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Use virtualenv", "command_template": "pip install virtualenv && virtualenv venv", "explanation": "Use virtualenv as an alternative to venv.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Use conda", "explanation": "Use conda create for environment management.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "python_pip_upgrade",
+      "name": "Pip Version Too Old",
+      "category": "python",
+      "severity": "medium",
+      "rules": {
+        "regex": "pip's dependency resolver does not currently take into account|Consider upgrading pip",
+        "keywords": ["upgrade pip", "dependency resolver"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Upgrade pip", "command_template": "pip install --upgrade pip", "explanation": "Upgrade pip to the latest version.", "base_confidence": 0.95},
+        {"rank": 2, "title": "Use python -m pip", "command_template": "python -m pip install --upgrade pip", "explanation": "Ensure you're upgrading the correct pip.", "base_confidence": 0.9}
+      ]
+    },
+    {
+      "pattern_id": "python_wheel_build_failed",
+      "name": "Python Wheel Build Failed",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "error: subprocess-exited-with-error|Building wheel for .* failed",
+        "keywords": ["subprocess-exited-with-error", "Building wheel", "failed"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install build dependencies", "command_template": "pip install build wheel", "explanation": "Ensure build and wheel are installed.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Check compiler", "explanation": "C extensions need gcc/Visual C++. See python_compiler_missing pattern.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use prebuilt wheel", "explanation": "Install from wheel if available: pip install package.whl", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "python_import_error",
+      "name": "Python Import Error",
+      "category": "python",
+      "severity": "high",
+      "rules": {
+        "regex": "ImportError: (.+)|ImportError: cannot import name '(.+)'",
+        "keywords": ["ImportError", "cannot import"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install missing dependency", "explanation": "The imported module or package is not installed.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Check circular imports", "explanation": "Circular imports can cause ImportError. Restructure the code.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Check PYTHONPATH", "explanation": "Ensure the module's directory is in PYTHONPATH.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "git_authentication_failed",
+      "name": "Git Authentication Failed",
+      "category": "git",
+      "severity": "critical",
+      "rules": {
+        "regex": "fatal: Authentication failed for '(.+)'",
+        "keywords": ["Authentication failed", "could not read Username"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Configure GitHub token", "explanation": "Set up a GitHub token in your CI secrets and configure git to use it.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Check repository permissions", "explanation": "Ensure the token has the required permissions to access the repository.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use SSH authentication", "explanation": "Consider using SSH keys instead of HTTPS for authentication.", "base_confidence": 0.75}
+      ]
+    },
+    {
+      "pattern_id": "git_branch_protection",
+      "name": "Git Branch Protection Violation",
+      "category": "git",
+      "severity": "high",
+      "rules": {
+        "regex": "protected branch hook declined|cannot push to protected branch",
+        "keywords": ["protected branch", "denied", "hook declined"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Check branch protection rules", "explanation": "You are trying to push directly to a protected branch (e.g., main). Create a PR instead.", "base_confidence": 0.95}
+      ]
+    },
+    {
+      "pattern_id": "git_merge_conflict",
+      "name": "Git Merge Conflict",
+      "category": "git",
+      "severity": "high",
+      "rules": {
+        "regex": "CONFLICT \\(|Merge conflict in|Automatic merge failed",
+        "keywords": ["CONFLICT", "merge conflict", "merge failed"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Resolve conflict markers", "explanation": "Edit files to remove <<<<<<<, =======, >>>>>>> and keep the correct code.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Abort merge", "command_template": "git merge --abort", "explanation": "Abort the merge and try a different approach.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use merge tool", "command_template": "git mergetool", "explanation": "Use a merge tool to resolve conflicts visually.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "git_submodule_error",
+      "name": "Git Submodule Error",
+      "category": "git",
+      "severity": "high",
+      "rules": {
+        "regex": "submodule.*failed|fatal: .*submodule|Unable to find current",
+        "keywords": ["submodule", "failed", "Unable to find"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Init and update submodules", "command_template": "git submodule update --init --recursive", "explanation": "Initialize and fetch all submodules.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Check submodule URL", "explanation": "Ensure .gitmodules has correct URLs and you have access.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Use token for private submodules", "explanation": "Configure Git credentials for private submodule repos.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "git_lfs_error",
+      "name": "Git LFS Error",
+      "category": "git",
+      "severity": "high",
+      "rules": {
+        "regex": "batch request failed|LFS not found|This repository is configured for Git LFS",
+        "keywords": ["LFS", "batch request", "Git LFS"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install Git LFS", "command_template": "git lfs install", "explanation": "Install and initialize Git LFS in the repository.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Pull LFS files", "command_template": "git lfs pull", "explanation": "Explicitly pull LFS files after clone.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Check LFS in CI", "explanation": "Ensure Git LFS is installed and run before checkout in CI.", "base_confidence": 0.85}
+      ]
+    },
+    {
+      "pattern_id": "git_shallow_clone",
+      "name": "Git Shallow Clone Update Not Allowed",
+      "category": "git",
+      "severity": "medium",
+      "rules": {
+        "regex": "shallow update not allowed|cannot rebase: Your index contains uncommitted changes",
+        "keywords": ["shallow", "update not allowed"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Unshallow the repo", "command_template": "git fetch --unshallow", "explanation": "Convert shallow clone to full clone.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Don't use shallow in CI", "explanation": "Remove fetch-depth: 1 if it causes issues with merge/rebase.", "base_confidence": 0.88},
+        {"rank": 3, "title": "Use full clone", "explanation": "In actions/checkout, set fetch-depth: 0 for full history.", "base_confidence": 0.85}
+      ]
+    },
+    {
+      "pattern_id": "git_ref_lock",
+      "name": "Git Reference Lock Error",
+      "category": "git",
+      "severity": "medium",
+      "rules": {
+        "regex": "Unable to create '.*/refs/heads/.*\\.lock'|Could not create directory",
+        "keywords": [".lock", "Unable to create", "refs/heads"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Remove stale lock", "command_template": "rm -f .git/refs/heads/*.lock", "explanation": "Remove stale lock files from crashed git process.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Check concurrent processes", "explanation": "Ensure only one git process is writing at a time.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Fix permissions", "explanation": "Ensure .git directory is writable.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "git_remote_rejected",
+      "name": "Git Push Rejected by Remote",
+      "category": "git",
+      "severity": "high",
+      "rules": {
+        "regex": "! \\[remote rejected\\].*|remote: error: refusing to",
+        "keywords": ["remote rejected", "refusing"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Pull and rebase", "command_template": "git pull --rebase origin main && git push", "explanation": "Remote has new commits. Rebase and push.", "base_confidence": 0.92},
+        {"rank": 2, "title": "Force push (use with caution)", "command_template": "git push --force-with-lease", "explanation": "Only if you're sure. Prefer --force-with-lease over --force.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Check branch protection", "explanation": "Protected branches may reject direct pushes. Create a PR.", "base_confidence": 0.88}
+      ]
+    },
+    {
+      "pattern_id": "test_assertion_failed",
+      "name": "Test Assertion Failed",
+      "category": "tests",
+      "severity": "medium",
+      "rules": {
+        "regex": "AssertionError: (.+)",
+        "keywords": ["AssertionError", "assert", "FAILED"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Review the failing test", "explanation": "The test assertion failed. Review expected vs actual values in the test output.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Check recent code changes", "explanation": "Recent changes might have broken expected behavior. Review the git diff.", "base_confidence": 0.8},
+        {"rank": 3, "title": "Update test expectations", "explanation": "If the new behavior is correct, update the test expectations.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "test_timeout",
+      "name": "Test Timeout",
+      "category": "tests",
+      "severity": "medium",
+      "rules": {
+        "regex": "TimeoutError|Timeout expired|timed out after (\\d+)",
+        "keywords": ["timeout", "timed out", "TimeoutError"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase test timeout", "explanation": "The test is taking too long. Consider increasing the timeout value.", "base_confidence": 0.8},
+        {"rank": 2, "title": "Optimize slow test", "explanation": "The test might be doing too much. Consider mocking external dependencies.", "base_confidence": 0.75},
+        {"rank": 3, "title": "Check for infinite loops", "explanation": "The code might have an infinite loop or deadlock. Review the test logic.", "base_confidence": 0.65}
+      ]
+    },
+    {
+      "pattern_id": "test_coverage_threshold",
+      "name": "Test Coverage Threshold Not Met",
+      "category": "tests",
+      "severity": "medium",
+      "rules": {
+        "regex": "Coverage threshold|coverage for .* failed|global coverage",
+        "keywords": ["coverage", "threshold", "failed"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Add missing tests", "explanation": "Write tests to cover the uncovered code.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Adjust threshold temporarily", "explanation": "Lower the threshold in jest.config or similar while adding tests.", "base_confidence": 0.75},
+        {"rank": 3, "title": "Exclude non-critical paths", "explanation": "Exclude certain files from coverage if they're not critical.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "test_flaky",
+      "name": "Flaky Test - Retries Exhausted",
+      "category": "tests",
+      "severity": "medium",
+      "rules": {
+        "regex": "retries exhausted|flaky|test failed on retry",
+        "keywords": ["retries exhausted", "flaky", "retry"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Fix test determinism", "explanation": "Remove timing dependencies, randomness, or external state from the test.", "base_confidence": 0.9},
+        {"rank": 2, "title": "Add proper mocks", "explanation": "Mock external services and time-dependent code.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Increase retries as temporary fix", "explanation": "Use retries only as a last resort while fixing the root cause.", "base_confidence": 0.6}
+      ]
+    },
+    {
+      "pattern_id": "test_environment_setup",
+      "name": "Test Environment Setup Failed",
+      "category": "tests",
+      "severity": "high",
+      "rules": {
+        "regex": "Error: Cannot find module|setup.*failed|beforeAll.*failed",
+        "keywords": ["Cannot find module", "setup", "failed", "beforeAll"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Install test dependencies", "command_template": "npm install --save-dev jest", "explanation": "Ensure test runner and dependencies are installed.", "base_confidence": 0.88},
+        {"rank": 2, "title": "Check test configuration", "explanation": "Verify jest.config, pytest.ini, or equivalent is correct.", "base_confidence": 0.85},
+        {"rank": 3, "title": "Set NODE_ENV", "command_template": "NODE_ENV=test npm test", "explanation": "Some apps require NODE_ENV=test for proper setup.", "base_confidence": 0.8}
+      ]
+    },
+    {
+      "pattern_id": "memory_exceeded",
+      "name": "Memory Limit Exceeded",
+      "category": "other",
+      "severity": "high",
+      "rules": {
+        "regex": "MemoryError|JavaScript heap out of memory|ENOMEM",
+        "keywords": ["MemoryError", "out of memory", "heap out of memory"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Increase memory limit", "command_template": "NODE_OPTIONS=--max-old-space-size=4096", "explanation": "The process ran out of memory. Increase the available memory.", "base_confidence": 0.85},
+        {"rank": 2, "title": "Optimize memory usage", "explanation": "Review code for memory leaks or inefficient memory usage.", "base_confidence": 0.75},
+        {"rank": 3, "title": "Use streaming for large data", "explanation": "For large files or data, consider using streaming instead of loading everything into memory.", "base_confidence": 0.7}
+      ]
+    },
+    {
+      "pattern_id": "k8s_image_pull_backoff",
+      "name": "Kubernetes ImagePullBackOff",
+      "category": "other",
+      "severity": "critical",
+      "rules": {
+        "regex": "ImagePullBackOff|ErrImagePull|rpc error: code = NotFound",
+        "keywords": ["ImagePullBackOff", "pull access denied", "repository does not exist"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Check image name and tag", "explanation": "The image specified in the manifest does not exist or the tag is incorrect. Verify the image name and tag in your deployment.", "base_confidence": 0.95},
+        {"rank": 2, "title": "Verify image pull secrets", "explanation": "If the image is private, ensure the ImagePullSecret is correctly configured in your namespace and referenced in the pod spec.", "base_confidence": 0.9}
+      ],
+      "tags": ["k8s", "containers"]
+    },
+    {
+      "pattern_id": "terraform_lock_error",
+      "name": "Terraform State Lock Error",
+      "category": "other",
+      "severity": "medium",
+      "rules": {
+        "regex": "Error: Error acquiring the state lock.*ID: ([a-f0-9-]+)",
+        "keywords": ["state lock", "ID:", "Force unlock"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Force unlock Terraform state", "command_template": "terraform force-unlock {lock_id}", "explanation": "The state is locked by another process. If you are sure no other CLI is running, use force-unlock with the lock ID.", "base_confidence": 0.85, "variables": ["lock_id"]}
+      ],
+      "tags": ["terraform", "iac"]
+    },
+    {
+      "pattern_id": "java_maven_dependency_error",
+      "name": "Maven Dependency Resolution Failure",
+      "category": "other",
+      "severity": "high",
+      "rules": {
+        "regex": "Could not resolve dependencies for project (.+): Could not find artifact (.+)",
+        "keywords": ["Failed to execute goal", "maven-compiler-plugin", "dependency resolution"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Update Maven local repository", "command_template": "mvn clean install -U", "explanation": "Force an update of snapshots and releases from remote repositories.", "base_confidence": 0.9}
+      ],
+      "tags": ["java", "maven"]
+    },
+    {
+      "pattern_id": "rust_cargo_lock_error",
+      "name": "Cargo Lockfile Out of Sync",
+      "category": "other",
+      "severity": "medium",
+      "rules": {
+        "regex": "error: the lock file (.+) needs to be updated but --frozen was passed",
+        "keywords": ["Cargo.lock", "--frozen", "--locked"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Update Cargo.lock", "command_template": "cargo update", "explanation": "The lockfile is out of sync with Cargo.toml. Run cargo update or remove the frozen flag in CI.", "base_confidence": 0.95}
+      ],
+      "tags": ["rust", "cargo"]
+    },
+    {
+      "pattern_id": "go_mod_sum_mismatch",
+      "name": "Go Mod Sum Mismatch",
+      "category": "other",
+      "severity": "high",
+      "rules": {
+        "regex": "verifying (.+): checksum mismatch",
+        "keywords": ["go.sum", "checksum mismatch", "secure-offline"]
+      },
+      "solutions": [
+        {"rank": 1, "title": "Clean Go mod cache and tidy", "command_template": "go clean -modcache && go mod tidy", "explanation": "Corruption detected in the go.sum file or local cache. Tidy the modules to recalculate hashes.", "base_confidence": 0.9}
+      ],
+      "tags": ["go", "golang"]
+    }
+  ]
+}

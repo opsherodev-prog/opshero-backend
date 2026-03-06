@@ -1,0 +1,760 @@
+{
+  "schema_version": "2.0.0",
+  "category": "npm",
+  "updated_at": "2026-02-22T00:00:00Z",
+  "patterns": [
+    {
+      "pattern_id": "npm_package_not_found",
+      "version": "1.0.0",
+      "name": "NPM Package Not Found (404)",
+      "category": "npm",
+      "subcategory": "registry",
+      "severity": "high",
+      "tags": ["npm", "registry", "404", "package"],
+      "detection": {
+        "regex": "npm ERR! 404 Not Found - GET https://registry.npmjs.org/(.+) - Not found",
+        "keywords_required": ["npm ERR!", "404"],
+        "keywords_optional": ["Not Found", "registry.npmjs.org", "GET"],
+        "exclude_if": ["yarn", "pnpm", "bun"],
+        "file_patterns": ["package.json"],
+        "variables": {
+          "package": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-package"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Check package name spelling",
+          "command_template": "npm search {package}",
+          "explanation": "The package `{package}` was not found on npm. It may be misspelled. Run `npm search {package}` to find the correct name, or visit https://www.npmjs.com/search?q={package}.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["package"]
+        },
+        {
+          "rank": 2,
+          "title": "Package may have been unpublished",
+          "explanation": "The package may have been removed from npm (like the left-pad incident). Search for an actively maintained alternative on npm or GitHub.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["package"]
+        },
+        {
+          "rank": 3,
+          "title": "Check if it's a private package",
+          "explanation": "If `{package}` is a private scoped package (e.g. `@myorg/package`), ensure you're authenticated (`npm whoami`) and your `.npmrc` has the correct registry and token configured.",
+          "confidence": 0.6,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false,
+          "variables_used": ["package"]
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_peer_dependency",
+      "version": "1.0.0",
+      "name": "NPM Peer Dependency Conflict",
+      "category": "npm",
+      "subcategory": "dependencies",
+      "severity": "medium",
+      "tags": ["npm", "peer-deps", "ERESOLVE", "dependencies"],
+      "detection": {
+        "regex": "npm ERR! peer dep missing: (.+), required by (.+)|ERESOLVE",
+        "keywords_required": ["peer dep", "ERESOLVE"],
+        "keywords_optional": ["peer dependency", "conflicting peer dependency", "required by"],
+        "exclude_if": ["yarn", "pnpm"],
+        "file_patterns": ["package.json", "package-lock.json"],
+        "variables": {
+          "missing_dep": {
+            "from": "regex_group_1",
+            "transform": "strip",
+            "default": "unknown-peer-dep"
+          },
+          "requiring_package": {
+            "from": "regex_group_2",
+            "transform": "strip",
+            "default": "unknown-package"
+          }
+        }
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install with --legacy-peer-deps",
+          "command_template": "npm install --legacy-peer-deps",
+          "explanation": "Use npm's legacy peer dependency resolution that ignores peer conflicts. Add `legacy-peer-deps=true` to `.npmrc` for a persistent fix in CI.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Install the missing peer dependency",
+          "command_template": "npm install {missing_dep}",
+          "explanation": "Manually install the required peer dependency `{missing_dep}` at a compatible version to satisfy the requirement from `{requiring_package}`.",
+          "confidence": 0.82,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false,
+          "variables_used": ["missing_dep", "requiring_package"]
+        },
+        {
+          "rank": 3,
+          "title": "Use package overrides",
+          "explanation": "Add an `overrides` section in `package.json` to force a specific version of the conflicting package across the entire dependency tree.",
+          "confidence": 0.75,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": ["npm_version_conflict"],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_out_of_disk_space",
+      "version": "1.0.0",
+      "name": "NPM No Space Left on Device",
+      "category": "npm",
+      "subcategory": "disk",
+      "severity": "critical",
+      "tags": ["npm", "disk", "enospc", "cache"],
+      "detection": {
+        "regex": "npm ERR! ENOSPC: no space left on device",
+        "keywords_required": ["npm ERR!", "ENOSPC"],
+        "keywords_optional": ["no space left", "device"],
+        "exclude_if": ["docker", "Docker"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Clean npm cache",
+          "command_template": "npm cache clean --force",
+          "explanation": "Clear the npm cache to free disk space. Then retry the installation. In CI, ensure the npm cache directory is cleaned between runs or use a cache action with size limits.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 2,
+          "title": "Remove node_modules and reinstall",
+          "command_template": "rm -rf node_modules && npm ci",
+          "explanation": "Delete `node_modules` completely and use `npm ci` for a clean install. Use `npm ci` instead of `npm install` in CI for faster, reproducible installs.",
+          "confidence": 0.85,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_registry_timeout",
+      "version": "1.0.0",
+      "name": "NPM Registry Timeout / Network Error",
+      "category": "npm",
+      "subcategory": "network",
+      "severity": "medium",
+      "tags": ["npm", "network", "timeout", "ETIMEDOUT", "ECONNRESET"],
+      "detection": {
+        "regex": "ETIMEDOUT|ECONNRESET|network timeout at|request to .* failed, reason:",
+        "keywords_required": ["ETIMEDOUT", "ECONNRESET"],
+        "keywords_optional": ["timeout", "network", "registry", "request failed"],
+        "exclude_if": ["docker", "pip", "git"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase npm fetch timeout",
+          "command_template": "npm install --fetch-timeout 60000 --fetch-retry-mintimeout 20000",
+          "explanation": "The npm registry request timed out. Increase fetch timeout globally: `npm config set fetch-timeout 60000` or pass as CLI flags.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use a registry mirror",
+          "command_template": "npm config set registry https://registry.npmmirror.com",
+          "explanation": "If the main npm registry is slow or unreachable, temporarily switch to a mirror. Restore with: `npm config set registry https://registry.npmjs.org`.",
+          "confidence": 0.8,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Retry the pipeline",
+          "explanation": "Transient network issue. Trigger a new CI pipeline run. Consider adding `--prefer-offline` if your CI caches node_modules.",
+          "confidence": 0.75,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_version_conflict",
+      "version": "1.0.0",
+      "name": "NPM Dependency Version Conflict (ERESOLVE)",
+      "category": "npm",
+      "subcategory": "dependencies",
+      "severity": "high",
+      "tags": ["npm", "ERESOLVE", "dependency-tree", "version-conflict"],
+      "detection": {
+        "regex": "ERESOLVE unable to resolve dependency tree|Could not resolve dependency",
+        "keywords_required": ["ERESOLVE", "unable to resolve dependency tree"],
+        "keywords_optional": ["Could not resolve", "conflicting", "dependency tree"],
+        "exclude_if": ["yarn", "pnpm"],
+        "file_patterns": ["package.json", "package-lock.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Use --legacy-peer-deps",
+          "command_template": "npm install --legacy-peer-deps",
+          "explanation": "ERESOLVE means npm v7+ strict peer dependency resolution failed. `--legacy-peer-deps` restores the npm v6 behavior that ignores peer conflicts.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Add overrides to package.json",
+          "explanation": "In `package.json`, add an `overrides` section to force a specific version of the conflicting dependency across the entire tree. Example: `{\"overrides\": {\"react\": \"18.0.0\"}}`.",
+          "confidence": 0.82,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Delete lockfile and reinstall fresh",
+          "command_template": "rm -f package-lock.json && npm install",
+          "explanation": "A stale lockfile can cause resolution failures. Delete `package-lock.json` and let npm resolve the tree fresh. Commit the new lockfile if resolution succeeds.",
+          "confidence": 0.75,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["npm_peer_dependency"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_native_module_build",
+      "version": "1.0.0",
+      "name": "NPM Native Module Build Failure (node-gyp)",
+      "category": "npm",
+      "subcategory": "build",
+      "severity": "high",
+      "tags": ["npm", "node-gyp", "native-modules", "build-tools", "python", "gcc"],
+      "detection": {
+        "regex": "gyp ERR!|node-gyp|Error: Can't find Python|MSBUILD : error",
+        "keywords_required": ["gyp ERR!"],
+        "keywords_optional": ["node-gyp", "Python", "MSBUILD", "build failed", "native"],
+        "exclude_if": [],
+        "file_patterns": ["package.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Install build tools",
+          "command_template": "apt-get install -y python3 build-essential",
+          "explanation": "Native Node.js modules need compiler tools. On Linux: `apt-get install -y python3 build-essential`. On macOS: Xcode Command Line Tools. On Windows: `npm install --global windows-build-tools`.",
+          "confidence": 0.9,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use prebuilt binaries",
+          "command_template": "npm rebuild --build-from-source=false",
+          "explanation": "Many native modules offer prebuilt binaries via `node-pre-gyp`. Ensure your Node version matches an available prebuilt. Check the package's GitHub releases.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use a CI image with build tools",
+          "explanation": "Switch to a Docker image with build tools pre-installed: `node:20` (full) instead of `node:20-alpine`. Alpine requires `apk add python3 make g++`.",
+          "confidence": 0.8,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_lockfile_conflict",
+      "version": "1.0.0",
+      "name": "NPM Lockfile Conflict",
+      "category": "npm",
+      "subcategory": "dependencies",
+      "severity": "medium",
+      "tags": ["npm", "package-lock", "git-conflict", "merge"],
+      "detection": {
+        "regex": "conflict in package-lock|merge conflict in package-lock|lockfileVersion",
+        "keywords_required": ["package-lock", "conflict"],
+        "keywords_optional": ["merge", "lockfileVersion", "<<<<<<"],
+        "exclude_if": ["yarn.lock", "pnpm-lock"],
+        "file_patterns": ["package-lock.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Regenerate lockfile after merge",
+          "command_template": "rm package-lock.json && npm install",
+          "explanation": "After resolving merge conflicts in `package.json`, delete `package-lock.json` and run `npm install` to generate a fresh, conflict-free lockfile.",
+          "confidence": 0.9,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use npm ci after resolving",
+          "command_template": "npm ci",
+          "explanation": "After regenerating the lockfile, use `npm ci` in CI for fast, deterministic installs that fail if the lockfile doesn't match `package.json`.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use .gitattributes merge driver",
+          "explanation": "Configure git to always take one side for lockfile conflicts by adding to `.gitattributes`: `package-lock.json merge=theirs`. This prevents future conflicts but loses history.",
+          "confidence": 0.75,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_install_memory",
+      "version": "1.0.0",
+      "name": "NPM Install Out of Memory (JS Heap)",
+      "category": "npm",
+      "subcategory": "performance",
+      "severity": "high",
+      "tags": ["npm", "memory", "heap", "oom", "node"],
+      "detection": {
+        "regex": "JavaScript heap out of memory|FATAL ERROR: Reached heap limit|Allocation failed - JavaScript heap out of memory",
+        "keywords_required": ["JavaScript heap out of memory", "FATAL ERROR"],
+        "keywords_optional": ["heap limit", "Allocation failed", "Reached heap limit"],
+        "exclude_if": ["OOMKilled", "exit code 137", "docker container"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Increase Node.js heap size",
+          "command_template": "NODE_OPTIONS=--max-old-space-size=4096 npm install",
+          "explanation": "Node.js has a default heap limit (~1.5GB on 64-bit). Increase it by setting `NODE_OPTIONS=--max-old-space-size=4096` (4GB) before the npm command.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Use npm ci instead of npm install",
+          "command_template": "NODE_OPTIONS=--max-old-space-size=4096 npm ci",
+          "explanation": "`npm ci` is faster and uses less memory than `npm install` because it skips dependency resolution. Prefer it in CI environments.",
+          "confidence": 0.88,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Install workspaces separately",
+          "explanation": "In monorepos, installing all workspaces at once can be memory-intensive. Install workspace packages one at a time: `npm install --workspace=packages/app`.",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_ebadengine",
+      "version": "1.0.0",
+      "name": "NPM Unsupported Engine Version (EBADENGINE)",
+      "category": "npm",
+      "subcategory": "environment",
+      "severity": "medium",
+      "tags": ["npm", "EBADENGINE", "node-version", "engine", "nvm"],
+      "detection": {
+        "regex": "Unsupported engine|error EBADENGINE|not matching your node",
+        "keywords_required": ["EBADENGINE"],
+        "keywords_optional": ["Unsupported engine", "node version", "not matching", "engines"],
+        "exclude_if": ["python", "ruby", "java"],
+        "file_patterns": ["package.json", ".nvmrc", ".node-version"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Switch to required Node version",
+          "command_template": "nvm install 20 && nvm use 20",
+          "explanation": "Your current Node.js version does not satisfy the package's `engines` requirement. Use nvm to install and activate the correct version. Check the required version in the error output.",
+          "confidence": 0.92,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Force install despite engine mismatch",
+          "command_template": "npm install --ignore-engines",
+          "explanation": "Use `--ignore-engines` to bypass the engine check. Use with caution — the package may not work correctly on an unsupported Node version.",
+          "confidence": 0.75,
+          "risk": "medium",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Add .nvmrc and update CI",
+          "explanation": "Add a `.nvmrc` file with the required Node version. In CI, add a step: `uses: actions/setup-node@v4 with: node-version-file: .nvmrc`.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["npm_native_module_build"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_eperm",
+      "version": "1.0.0",
+      "name": "NPM Permission Error (EPERM/EACCES)",
+      "category": "npm",
+      "subcategory": "permissions",
+      "severity": "high",
+      "tags": ["npm", "EPERM", "EACCES", "permissions", "sudo"],
+      "detection": {
+        "regex": "npm ERR! EPERM: operation not permitted|npm ERR! EACCES: permission denied",
+        "keywords_required": ["npm ERR! EPERM", "npm ERR! EACCES"],
+        "keywords_optional": ["operation not permitted", "permission denied", "~/.npm"],
+        "exclude_if": ["docker"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Fix npm cache directory ownership",
+          "command_template": "sudo chown -R $(whoami) ~/.npm",
+          "explanation": "The npm cache directory has incorrect ownership. Fix it by reassigning ownership to your current user. Never run npm commands with `sudo` — use nvm to avoid permission issues.",
+          "confidence": 0.88,
+          "risk": "low",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Never use sudo with npm",
+          "explanation": "Running `sudo npm install` corrupts directory permissions. Use nvm (Node Version Manager) which installs Node in your home directory, completely avoiding sudo requirements.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Clear corrupted npm cache",
+          "command_template": "npm cache clean --force",
+          "explanation": "A corrupted npm cache can cause permission errors even without sudo. Clear it and retry: `npm cache clean --force`.",
+          "confidence": 0.75,
+          "risk": "low",
+          "reversible": false,
+          "affects_files": false,
+          "requires_confirmation": true
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_invalid_json",
+      "version": "1.0.0",
+      "name": "NPM Invalid package.json (JSON Parse Error)",
+      "category": "npm",
+      "subcategory": "configuration",
+      "severity": "high",
+      "tags": ["npm", "package.json", "json", "syntax"],
+      "detection": {
+        "regex": "npm ERR! Invalid JSON|JSON.parse|Unexpected token|SyntaxError.*JSON",
+        "keywords_required": ["Invalid JSON", "JSON.parse"],
+        "keywords_optional": ["Unexpected token", "SyntaxError", "package.json", "trailing comma"],
+        "exclude_if": [],
+        "file_patterns": ["package.json"],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Validate package.json with npm",
+          "command_template": "node -e \"require('./package.json')\" && echo 'Valid JSON'",
+          "explanation": "There's a JSON syntax error in `package.json`. Use `node -e \"require('./package.json')\"` to see the exact parse error with line number.",
+          "confidence": 0.92,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Check for trailing commas",
+          "explanation": "JSON does not allow trailing commas after the last item in arrays or objects. Check your editor's JSON linting. In VS Code: Ctrl+Shift+P > 'Format Document'.",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": true,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 3,
+          "title": "Use an online JSON validator",
+          "explanation": "Paste the content of `package.json` into https://jsonlint.com/ to find and fix all JSON syntax errors with clear line-number indicators.",
+          "confidence": 0.85,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": []
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    },
+    {
+      "pattern_id": "npm_self_signed_cert",
+      "version": "1.0.0",
+      "name": "NPM SSL Certificate Error",
+      "category": "npm",
+      "subcategory": "network",
+      "severity": "medium",
+      "tags": ["npm", "ssl", "certificate", "proxy", "corporate"],
+      "detection": {
+        "regex": "self.?signed certificate|UNABLE_TO_VERIFY_LEAF_SIGNATURE|certificate has expired|CERT_HAS_EXPIRED",
+        "keywords_required": ["self signed certificate", "UNABLE_TO_VERIFY_LEAF_SIGNATURE"],
+        "keywords_optional": ["certificate", "SSL", "expired", "corporate proxy", "CERT"],
+        "exclude_if": ["docker", "git"],
+        "file_patterns": [],
+        "variables": {}
+      },
+      "solutions": [
+        {
+          "rank": 1,
+          "title": "Add corporate CA certificate",
+          "command_template": "npm config set cafile /path/to/corporate-ca.crt",
+          "explanation": "If behind a corporate proxy that intercepts SSL, add its CA certificate to npm: `npm config set cafile /path/to/ca.crt`. This is the secure approach (vs disabling SSL entirely).",
+          "confidence": 0.9,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        },
+        {
+          "rank": 2,
+          "title": "Disable strict SSL (DEV ONLY)",
+          "command_template": "npm config set strict-ssl false",
+          "explanation": "WARNING: Only use in a development environment behind a trusted corporate proxy. NEVER set in production. Disabling SSL verification exposes you to MITM attacks.",
+          "confidence": 0.75,
+          "risk": "high",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": true
+        },
+        {
+          "rank": 3,
+          "title": "Check system date/time",
+          "explanation": "If the certificate is not self-signed but 'expired', your system clock may be wrong. Incorrect system time causes valid certificates to appear expired. Sync with NTP.",
+          "confidence": 0.7,
+          "risk": "none",
+          "reversible": true,
+          "affects_files": false,
+          "requires_confirmation": false
+        }
+      ],
+      "causal_chain": {
+        "often_caused_by": [],
+        "often_causes": ["npm_registry_timeout"]
+      },
+      "metadata": {
+        "created_at": "2026-02-22T00:00:00Z",
+        "updated_at": "2026-02-22T00:00:00Z",
+        "author": "opshero-team",
+        "source": "core",
+        "stats": { "matched_count": 0, "helpful_count": 0, "not_helpful_count": 0, "success_rate": null }
+      }
+    }
+  ]
+}
