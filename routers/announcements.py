@@ -57,7 +57,7 @@ async def _get_user_tier(credentials: Optional[HTTPAuthorizationCredentials]) ->
         return "free"
 
 
-@router.get("")
+@router.get("/")
 async def list_announcements(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ):
