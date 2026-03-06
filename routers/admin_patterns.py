@@ -84,7 +84,7 @@ async def list_patterns(
     return {"patterns": patterns, "total": total, "page": page, "page_size": page_size}
 
 
-@router.post("/")
+@router.post("")
 async def create_pattern(body: dict, admin: CurrentAdmin):
     """Create a new pattern."""
     db = get_db()

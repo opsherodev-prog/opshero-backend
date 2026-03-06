@@ -25,7 +25,7 @@ class ConfigSetRequest(BaseModel):
     value: Any
 
 
-@router.get("/")
+@router.get("")
 async def get_all_config(admin: CurrentAdmin):
     db = get_db()
     entries = await db.platform_config.find({}, {"_id": 0}).to_list(None)

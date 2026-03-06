@@ -55,7 +55,7 @@ def _serialize(doc: dict) -> dict:
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def list_announcements(admin: CurrentAdmin):
     db = get_db()
     docs = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(None)

@@ -101,7 +101,7 @@ class ReviewRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.get("/")
+@router.get("")
 async def list_contributions(
     admin: CurrentAdmin,
     status: Optional[str] = Query(None),
