@@ -61,6 +61,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log CORS origins at startup
+logger.info(f"CORS allowed origins: {settings.allowed_origins}")
+
 # ── Pattern loading ────────────────────────────────────────────────────────────
 
 PATTERNS_DIR = (
