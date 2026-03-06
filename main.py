@@ -225,6 +225,7 @@ app = FastAPI(
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url="/redoc" if settings.app_env != "production" else None,
     lifespan=lifespan,
+    redirect_slashes=False,  # Disable automatic trailing slash redirects (307)
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
