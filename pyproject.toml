@@ -1,0 +1,59 @@
+[project]
+name = "opshero-backend"
+version = "0.1.0"
+description = "OpsHero Backend API — CI/CD error analysis engine"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+
+    # Database
+    "motor>=3.5.0",           # Async MongoDB driver
+    "redis[asyncio]>=5.0.0",  # Redis async client
+
+    # Config & validation
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+
+    # Auth
+    "python-jose[cryptography]>=3.3.0",  # JWT
+    "passlib[bcrypt]>=1.7.4",            # Password hashing
+
+    # HTTP client (GitHub OAuth + webhooks)
+    "httpx>=0.27.0",
+
+    # LLM (Groq via OpenAI-compatible endpoint)
+    "openai>=1.40.0",
+
+    # Misc
+    "python-multipart>=0.0.9",  # Form data
+    "pyotp>=2.9.0",             # TOTP 2FA (admin)
+    "cryptography>=42.0.0",     # Fernet encryption (TOTP secret)
+    "celery[redis]>=5.4.0",     # Background tasks (weekly rerank)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",            # AsyncClient for tests
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",              # Linter
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
