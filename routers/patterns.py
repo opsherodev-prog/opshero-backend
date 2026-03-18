@@ -17,9 +17,8 @@ router = APIRouter(prefix="/patterns", tags=["patterns"])
 
 # ── GET /patterns ─────────────────────────────────────────────────────────────
 
-@router.get("")
+@router.get("/")
 async def list_patterns(
-    user: CurrentUser,
     category: Optional[str] = Query(None, description="Filter by category"),
     subcategory: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
@@ -77,7 +76,7 @@ async def list_patterns(
 # ── GET /patterns/{pattern_id} ────────────────────────────────────────────────
 
 @router.get("/{pattern_id}")
-async def get_pattern(pattern_id: str, user: CurrentUser):
+async def get_pattern(pattern_id: str):
     """Return a single pattern by ID (regex excluded from response)."""
     db = get_db()
 
@@ -97,7 +96,7 @@ async def get_pattern(pattern_id: str, user: CurrentUser):
 # ── GET /patterns/meta/categories ────────────────────────────────────────────
 
 @router.get("/meta/categories")
-async def list_categories(user: CurrentUser):
+async def list_categories():
     """Return available categories and their counts."""
     db = get_db()
     pipeline = [
@@ -111,7 +110,7 @@ async def list_categories(user: CurrentUser):
 # ── GET /patterns/meta/sync-manifest ─────────────────────────────────────────
 
 @router.get("/meta/sync-manifest")
-async def get_sync_manifest(user: CurrentUser):
+async def get_sync_manifest():
     """
     Return lightweight pattern manifest for CLI offline sync.
     CLI compares local cache version against this to decide whether to update.
