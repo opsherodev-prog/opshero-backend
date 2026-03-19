@@ -77,7 +77,14 @@ async def submit_feedback(body: FeedbackSubmit, user: CurrentUser):
         "updated_at": now,
     }
 
-    await db.feedback_hub.insert_one(doc)
+    try:
+        await db.feedback_hub.insert_one(doc)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to insert feedback: {e}")
+        from fastapi import HTTPException
+        raise HTTPException(500, "Failed to submit feedback. Please try again.")
     
     # Notify admins about new feedback (fire-and-forget)
     try:
@@ -88,14 +95,18 @@ async def submit_feedback(body: FeedbackSubmit, user: CurrentUser):
         ).to_list(None)
         
         if admin_users:
-            from routers.notifications import create_new_feedback_notification
-            admin_ids = [admin["id"] for admin in admin_users]
-            await create_new_feedback_notification(
-                admin_user_ids=admin_ids,
-                feedback_title=body.title,
-                author_github=user.github_login,
-                feedback_id=doc["id"]
-            )
+            try:
+                from routers.notifications import create_new_feedback_notification
+                admin_ids = [admin["id"] for admin in admin_users]
+                await create_new_feedback_notification(
+                    admin_user_ids=admin_ids,
+                    feedback_title=body.title,
+                    author_github=user.github_login,
+                    feedback_id=doc["id"]
+                )
+            except ImportError:
+                # Notifications module not available, skip notification
+                pass
     except Exception as e:
         # Don't fail the feedback submission if notification fails
         import logging

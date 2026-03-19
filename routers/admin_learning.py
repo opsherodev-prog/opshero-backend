@@ -348,55 +348,89 @@ async def generate_pattern_for_candidate(candidate_id: str, admin: SuperAdmin):
     if candidate.get("status") in ("promoted", "auto_promoted"):
         raise HTTPException(400, "Candidate has already been promoted")
 
-    extra_examples = await _fetch_related_examples(db, candidate)
+    try:
+        extra_examples = await _fetch_related_examples(db, candidate)
+    except Exception as e:
+        logger.warning(f"Failed to fetch related examples for candidate {candidate_id}: {e}")
+        extra_examples = []
 
     logger.info(
         "Admin %s triggered on-demand pattern generation for candidate %s",
         admin.email, candidate_id,
     )
 
-    result = await generator.generate_and_validate(
-        candidate=candidate,
-        extra_examples=extra_examples,
-        retry_on_regex_mismatch=True,
-    )
+    try:
+        result = await generator.generate_and_validate(
+            candidate=candidate,
+            extra_examples=extra_examples,
+            retry_on_regex_mismatch=True,
+        )
+    except Exception as e:
+        logger.error(f"Pattern generation failed for candidate {candidate_id}: {e}")
+        return {
+            "success": False,
+            "error": f"Pattern generation failed: {str(e)}",
+            "model": None,
+            "latency_ms": 0,
+        }
 
     now = datetime.utcnow()
 
-    if not result or not result.success:
-        error_msg = result.error if result else "Pattern generation failed"
+    if not result:
+        return {
+            "success": False,
+            "error": "Pattern generation failed - no result returned",
+            "model": None,
+            "latency_ms": 0,
+        }
+    
+    if not getattr(result, 'success', False):
+        error_msg = getattr(result, 'error', 'Pattern generation failed')
         return {
             "success": False,
             "error": error_msg,
-            "model": result.model if result else None,
-            "latency_ms": result.latency_ms if result else 0,
+            "model": getattr(result, 'model', None),
+            "latency_ms": getattr(result, 'latency_ms', 0),
         }
 
     # Persist the generated pattern_data back to the candidate document
+    pattern_data = getattr(result, 'pattern_data', {}) or {}
+    validation_errors = getattr(result, 'validation_errors', []) or []
+    
     updates: dict = {
-        "pattern_data": result.pattern_data if result.pattern_data else {},
-        "validation_errors": result.validation_errors or [],
-        "generation_model": result.model,
-        "generation_latency_ms": result.latency_ms,
+        "pattern_data": pattern_data,
+        "validation_errors": validation_errors,
+        "generation_model": getattr(result, 'model', None),
+        "generation_latency_ms": getattr(result, 'latency_ms', 0),
         "last_generation_at": now,
         "last_generation_triggered_by": admin.email,
     }
-    if result.validation_errors:
+    
+    if validation_errors:
         updates["status"] = "ready_for_review"
     else:
         updates["status"] = "ready_for_review"  # admin still confirms before /promote
 
-    await db.pattern_candidates.update_one({"id": candidate_id}, {"$set": updates})
+    try:
+        await db.pattern_candidates.update_one({"id": candidate_id}, {"$set": updates})
+    except Exception as e:
+        logger.error(f"Failed to update candidate {candidate_id}: {e}")
+        return {
+            "success": False,
+            "error": f"Failed to save pattern data: {str(e)}",
+            "model": getattr(result, 'model', None),
+            "latency_ms": getattr(result, 'latency_ms', 0),
+        }
 
     return {
         "success": True,
-        "pattern_data": result.pattern_data if result.pattern_data else {},
-        "validation_errors": result.validation_errors or [],
-        "is_valid": result.is_valid if hasattr(result, 'is_valid') else False,
-        "model": result.model,
-        "input_tokens": result.input_tokens if hasattr(result, 'input_tokens') else 0,
-        "output_tokens": result.output_tokens if hasattr(result, 'output_tokens') else 0,
-        "latency_ms": result.latency_ms,
+        "pattern_data": pattern_data,
+        "validation_errors": validation_errors,
+        "is_valid": getattr(result, 'is_valid', False),
+        "model": getattr(result, 'model', None),
+        "input_tokens": getattr(result, 'input_tokens', 0),
+        "output_tokens": getattr(result, 'output_tokens', 0),
+        "latency_ms": getattr(result, 'latency_ms', 0),
     }
 
 
