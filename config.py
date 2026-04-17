@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     # ── Auth — Users ──────────────────────────────────────────────────────────
     jwt_secret: str = Field(..., min_length=32)
     jwt_algorithm: str = "HS256"
-    jwt_expire_hours: int = 24
-    jwt_refresh_expire_days: int = 30
+    jwt_expire_hours: int = 168        # 7 days
+    jwt_refresh_expire_days: int = 90  # 3 months
 
     # ── Auth — Admin ──────────────────────────────────────────────────────────
     admin_jwt_secret: str = Field(..., min_length=32)
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # ── GitHub OAuth ──────────────────────────────────────────────────────────
     github_client_id: str = ""
     github_client_secret: str = ""
-    github_redirect_uri: str = "http://localhost:3000/auth/callback"
+    github_redirect_uri: str = "https://opshero.me/auth/callback"
 
     # ── GitHub Webhooks & Patterns repo ───────────────────────────────────────
     # Secret configured in GitHub repo → Settings → Webhooks → Secret
