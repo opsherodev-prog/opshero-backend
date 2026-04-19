@@ -158,6 +158,31 @@ async def send_reactivation_notification(to: str, username: str) -> bool:
     )
 
 
+async def send_upgrade_confirmation_email(
+    to: str, username: str, tier: str, expires_at
+) -> bool:
+    """Notify user that their account has been upgraded via GeniusPay payment."""
+    tier_label = tier.capitalize()
+    expires_str = expires_at.strftime("%B %d, %Y") if hasattr(expires_at, "strftime") else str(expires_at)
+    return await send_email(
+        to=to,
+        subject=f"OpsHero — Welcome to {tier_label}! 🎉",
+        html=render_template("upgrade_confirmation", username=username,
+                             tier=tier_label, expires_at=expires_str),
+        text=(
+            f"Hi {username},\n\n"
+            f"Your payment was successful! Your account has been upgraded to OpsHero {tier_label}.\n\n"
+            f"Your subscription is active until {expires_str}.\n\n"
+            f"What's new on {tier_label}:\n"
+            f"  - AI engine fallback for unknown errors\n"
+            f"  - Extended analysis history\n"
+            f"  - Cloud sync (CLI ↔ dashboard)\n\n"
+            f"Dashboard: {_BASE_URL}/dashboard\n\n"
+            f"Thank you for supporting OpsHero!\n\n— OpsHero Team"
+        ),
+    )
+
+
 # ── Template registry ─────────────────────────────────────────────────────────
 
 TEMPLATES: dict[str, dict] = {

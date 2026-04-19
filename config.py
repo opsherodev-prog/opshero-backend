@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     stripe_pro_price_id: str = ""
     stripe_team_price_id: str = ""
 
+    # ── GeniusPay (Mobile Money — Wave, Orange Money, MTN) ────────────────────
+    geniuspay_api_key: str = ""
+    geniuspay_api_secret: str = ""
+    geniuspay_webhook_secret: str = ""
+
     # ── Email (Gmail SMTP) ────────────────────────────────────────────────────
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
