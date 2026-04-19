@@ -155,7 +155,7 @@ async def sync_pull(body: PullRequest, user: CurrentUser):
     }
 
     cursor = (
-        db.analyses.find(query, {"_id": 0, "log_hash": 1})
+        db.analyses.find(query, {"_id": 0})  # return all fields except MongoDB _id
         .sort("created_at", 1)
         .limit(500)
     )

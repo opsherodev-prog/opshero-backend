@@ -370,8 +370,60 @@ async def get_run_logs(
     )
 
 
-@router.get("/repos/{owner}/{repo}/runs/latest-failed", response_model=RunLogsResponse)
-async def latest_failed_run_logs(
+@router.post("/runs/{run_id}/rerun")
+async def rerun_workflow(
+    run_id: int,
+    user: CurrentUser,
+    owner: str = Query(...),
+    repo: str = Query(...),
+    failed_only: bool = Query(False, description="Re-run only failed jobs"),
+):
+    """
+    Re-trigger a GitHub Actions workflow run.
+    Uses the user's stored GitHub token.
+    """
+    token = await _gh_token(user)
+
+    # Choose endpoint: rerun all jobs or only failed jobs
+    if failed_only:
+        url = f"{_GH_API}/repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs"
+    else:
+        url = f"{_GH_API}/repos/{owner}/{repo}/actions/runs/{run_id}/rerun"
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(url, headers=_gh_headers(token))
+
+    if resp.status_code == 403:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Insufficient GitHub permissions. Make sure your token has 'repo' scope.",
+        )
+    if resp.status_code == 404:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"Run #{run_id} not found in {owner}/{repo}.",
+        )
+    if resp.status_code == 409:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This run is already in progress or cannot be re-run.",
+        )
+    if resp.status_code not in (201, 204):
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"GitHub rerun failed: HTTP {resp.status_code}",
+        )
+
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "repo": f"{owner}/{repo}",
+        "failed_only": failed_only,
+        "message": f"Re-run triggered for run #{run_id}",
+    }
+
+
+@router.get("/repos/{owner}/{repo}/runs/latest-failed", response_model=RunLogsResponse)async def latest_failed_run_logs(
     owner: str,
     repo: str,
     user: CurrentUser,

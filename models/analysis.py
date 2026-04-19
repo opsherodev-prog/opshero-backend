@@ -69,6 +69,9 @@ class Analysis(BaseModel):
     # TTL — logs_expires_at triggers MongoDB TTL index cleanup
     logs_expires_at: Optional[datetime] = None
 
+    # Sync metadata
+    synced_from_client: bool = False  # True if pushed via sync/push (offline mode)
+
     # Error (if engine crashed)
     engine_error: Optional[str] = None
 
