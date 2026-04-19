@@ -67,7 +67,7 @@ def build_slack_payload(analysis: dict) -> dict:
 
     # ── Analysis URL ─────────────────────────────────────────────────────────
     analysis_id = analysis.get("id") or analysis.get("analysis_id") or ""
-    analysis_url = f"https://app.opshero.dev/dashboard/history/{analysis_id}" if analysis_id else None
+    analysis_url = f"https://opshero.me/dashboard/analyses/{analysis_id}" if analysis_id else None
 
     # ── Build blocks ─────────────────────────────────────────────────────────
     blocks: list[dict] = []
