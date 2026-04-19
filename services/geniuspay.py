@@ -20,7 +20,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-GENIUSPAY_BASE_URL = "https://pay.geniuspay.io/api/v1/merchant"
+GENIUSPAY_BASE_URL = "https://pay.genius.ci/api/v1/merchant"
 
 # Tier pricing in XOF (West African CFA franc)
 TIER_PRICES_XOF = {

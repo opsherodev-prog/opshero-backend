@@ -97,7 +97,11 @@ async def create_checkout(body: CheckoutRequest, user: CurrentUser):
             payment_method=body.payment_method,
         )
     except RuntimeError as e:
+        logger.error("GeniusPay checkout error: %s", str(e))
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    except Exception as e:
+        logger.error("Unexpected checkout error: %s", str(e), exc_info=True)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Payment error: {str(e)}")
 
     # Store pending payment reference in DB
     db = get_db()
