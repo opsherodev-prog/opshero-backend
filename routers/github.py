@@ -423,7 +423,8 @@ async def rerun_workflow(
     }
 
 
-@router.get("/repos/{owner}/{repo}/runs/latest-failed", response_model=RunLogsResponse)async def latest_failed_run_logs(
+@router.get("/repos/{owner}/{repo}/runs/latest-failed", response_model=RunLogsResponse)
+async def latest_failed_run_logs(
     owner: str,
     repo: str,
     user: CurrentUser,
